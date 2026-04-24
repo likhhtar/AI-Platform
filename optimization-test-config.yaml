@@ -1,0 +1,79 @@
+suite:
+  name: "Prompt Optimization Test Suite"
+  version: "1.0"
+  description: "Демонстрационный тест для системы оптимизации промптов"
+
+optimizer:
+  enabled: true
+  mode: "apply"  # "suggest" or "apply"
+  type: "llm"    # "llm" or "rule-based"
+  iterations: 2
+  
+  llm:
+    provider: "openai"
+    model: "gpt-3.5-turbo"
+    temperature: 0.3
+    maxTokens: 2000
+    systemPrompt: "Ты эксперт по оптимизации промптов. Анализируй и улучшай промпты для лучшей производительности."
+  
+  rules:
+    enableLengthOptimization: true
+    enableClarityOptimization: true
+    enableSpecificityOptimization: true
+    customRules:
+      - name: "remove_vague_words"
+        description: "Удалить неопределенные слова"
+        pattern: "возможно|может быть|наверное"
+        replacement: ""
+        enabled: true
+      - name: "add_specificity"
+        description: "Добавить конкретность"
+        pattern: "ответь"
+        replacement: "дай точный ответ"
+        enabled: true
+
+prompts:
+  - id: "math_calculation"
+    template: "Вычисли: {{expression}}"
+  - id: "greeting"
+    template: "Поприветствуй {{name}} на {{language}}"
+  - id: "simple_question"
+    template: "Ответь кратко: {{question}}"
+
+agents:
+  - name: "calculator_agent"
+    system_prompt: "Ты точный калькулятор. Отвечай только числом без объяснений."
+    model: "mock"
+    provider: "mock"
+  - name: "friendly_agent"
+    system_prompt: "Ты дружелюбный помощник. Отвечай вежливо и кратко."
+    model: "mock"
+    provider: "mock"
+
+test_cases:
+  - prompt_id: "math_calculation"
+    agents: ["calculator_agent"]
+    variables:
+      expression: "15 + 27"
+    expected: "42"
+    evaluator: "contains"
+  
+  - prompt_id: "greeting"
+    agents: ["friendly_agent"]
+    variables:
+      name: "Анна"
+      language: "русском языке"
+    expected: "Привет"
+    evaluator: "contains"
+  
+  - prompt_id: "simple_question"
+    agents: ["friendly_agent"]
+    variables:
+      question: "Какой сегодня день недели?"
+    expected: "день"
+    evaluator: "contains"
+
+execution:
+  maxParallelism: 2
+  testTimeout: "30s"
+  enableParallelExecution: true

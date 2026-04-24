@@ -1,0 +1,25 @@
+metadata:
+  name: "Real LLM Test"
+  description: "Testing real OpenRouter LLM call"
+  version: "1.0"
+
+prompts:
+  - id: "hello-prompt"
+    name: "Hello Test"
+    template: "Say hello and tell me you are working properly. Be brief."
+    variables: []
+
+agents:
+  - name: "openrouter-agent"
+    provider: "openrouter"
+    model: "openai/gpt-3.5-turbo"
+    temperature: 0.7
+    maxTokens: 100
+    systemPrompt: "You are a helpful assistant."
+
+tests:
+  - promptId: "hello-prompt"
+    agentName: "openrouter-agent"
+    variables: {}
+    expected: "Hello"
+    evaluatorType: "contains"

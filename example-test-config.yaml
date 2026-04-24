@@ -1,0 +1,84 @@
+agents:
+  - name: translation-agent
+    provider: mock
+    systemPrompt: "You are a professional translator. Provide accurate translations without additional commentary."
+    temperature: 0.2
+    maxTokens: 100
+
+  - name: creative-agent
+    provider: mock
+    systemPrompt: "You are a creative writing assistant. Be imaginative and engaging."
+    temperature: 0.8
+    maxTokens: 200
+
+  - name: precise-agent
+    provider: mock
+    systemPrompt: "You are a precise and factual assistant. Provide exact answers."
+    temperature: 0.0
+    maxTokens: 50
+
+prompts:
+  - id: translate
+    name: "Basic Translation"
+    template: "Translate the following text from {{source_language}} to {{target_language}}: {{text}}"
+
+  - id: simple-translate
+    name: "Simple Translation"
+    template: "Translate {{text}} to {{language}}"
+
+  - id: math-question
+    name: "Math Question"
+    template: "What is {{expression}}?"
+
+  - id: creative-prompt
+    name: "Creative Writing"
+    template: "Write a {{type}} about {{topic}}"
+
+tests:
+  - promptId: simple-translate
+    agent: translation-agent
+    variables:
+      text: "Hello"
+      language: "French"
+    expected: "Bonjour"
+    evaluator: exact
+
+  - promptId: simple-translate
+    agent: translation-agent
+    variables:
+      text: "Goodbye"
+      language: "Spanish"
+    expected: "Adiós"
+    evaluator: exact
+
+  - promptId: translate
+    agent: translation-agent
+    variables:
+      source_language: "English"
+      target_language: "German"
+      text: "Hello"
+    expected: "Hallo"
+    evaluator: exact
+
+  - promptId: math-question
+    agent: precise-agent
+    variables:
+      expression: "2+2"
+    expected: "4"
+    evaluator: contains
+
+  - promptId: creative-prompt
+    agent: creative-agent
+    variables:
+      type: "haiku"
+      topic: "spring"
+    expected: "haiku"
+    evaluator: contains
+
+  - promptId: simple-translate
+    agent: translation-agent
+    variables:
+      text: "Hello"
+      language: "French"
+    expected: "bonjour"
+    evaluator: exact

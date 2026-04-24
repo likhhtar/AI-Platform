@@ -1,0 +1,52 @@
+suite:
+  name: "Demo Baseline Test Suite"
+  version: "1.0"
+  description: "Демонстрационный тест для системы baseline и regression detection"
+
+prompts:
+  - id: "math_calculation"
+    template: "Вычисли: {{expression}}"
+  - id: "greeting"
+    template: "Поприветствуй {{name}} на {{language}}"
+  - id: "simple_question"
+    template: "Ответь кратко: {{question}}"
+
+agents:
+  - name: "calculator_agent"
+    system_prompt: "Ты точный калькулятор. Отвечай только числом без объяснений."
+    model: "mock"
+    provider: "mock"
+  - name: "friendly_agent"
+    system_prompt: "Ты дружелюбный помощник. Отвечай вежливо и кратко."
+    model: "mock"
+    provider: "mock"
+
+test_cases:
+  - prompt_id: "math_calculation"
+    agents: ["calculator_agent"]
+    variables:
+      expression: "15 + 27"
+    expected: "42"
+    evaluator: "contains"
+  
+  - prompt_id: "greeting"
+    agents: ["friendly_agent"]
+    variables:
+      name: "Анна"
+      language: "русском языке"
+    expected: "Привет"
+    evaluator: "contains"
+  
+  - prompt_id: "simple_question"
+    agents: ["friendly_agent"]
+    variables:
+      question: "Какой сегодня день недели?"
+    expected: "день"
+    evaluator: "contains"
+  
+  - prompt_id: "math_calculation"
+    agents: ["calculator_agent"]
+    variables:
+      expression: "100 - 58"
+    expected: "42"
+    evaluator: "contains"

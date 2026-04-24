@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenRouter System Integration Test Suite</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #0d1117;
+            color: #e6edf3;
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #f0f6fc;
+            margin-bottom: 0.5rem;
+        }
+        
+        .summary-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 3rem;
+        }
+        
+        .summary-card {
+            background: linear-gradient(135deg, #21262d 0%, #161b22 100%);
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 1.5rem;
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .summary-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        }
+        
+        .summary-card .icon {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .summary-card .count {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.25rem;
+        }
+        
+        .summary-card .label {
+            font-size: 0.875rem;
+            opacity: 0.8;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .pass { color: #3fb950; }
+        .fail { color: #f85149; }
+        .partial { color: #d29922; }
+        
+        .table-container {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+        
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .table th {
+            background: #21262d;
+            padding: 1rem 1.5rem;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid #30363d;
+            color: #f0f6fc;
+        }
+        
+        .table td {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid #21262d;
+        }
+        
+        .table-row {
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+        
+        .table-row:hover {
+            background: #21262d;
+        }
+        
+        .table-row:last-child td {
+            border-bottom: none;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .status-pass {
+            background: rgba(63, 185, 80, 0.15);
+            color: #3fb950;
+            border: 1px solid rgba(63, 185, 80, 0.3);
+        }
+        
+        .status-fail {
+            background: rgba(248, 81, 73, 0.15);
+            color: #f85149;
+            border: 1px solid rgba(248, 81, 73, 0.3);
+        }
+        
+        .status-partial {
+            background: rgba(210, 153, 34, 0.15);
+            color: #d29922;
+            border: 1px solid rgba(210, 153, 34, 0.3);
+        }
+        
+        .details-row {
+            display: none;
+            background: #0d1117;
+        }
+        
+        .details-content {
+            padding: 2rem 1.5rem;
+            border-top: 1px solid #30363d;
+        }
+        
+        .details-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+        }
+        
+        .details-section h4 {
+            color: #f0f6fc;
+            margin-bottom: 0.75rem;
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .details-section pre {
+            background: #21262d;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 1rem;
+            font-size: 0.875rem;
+            line-height: 1.5;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            color: #e6edf3;
+        }
+        
+        .execution-time {
+            color: #7d8590;
+            font-size: 0.875rem;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .summary-cards {
+                grid-template-columns: 1fr;
+            }
+            
+            .details-grid {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+            
+            .table th,
+            .table td {
+                padding: 0.75rem 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>OpenRouter System Integration Test Suite</h1>
+        </div>
+        
+        <div class="summary-cards">
+            <div class="summary-card">
+                <div class="icon pass">✅</div>
+                <div class="count pass">3</div>
+                <div class="label">Passed</div>
+            </div>
+            <div class="summary-card">
+                <div class="icon fail">❌</div>
+                <div class="count fail">2</div>
+                <div class="label">Failed</div>
+            </div>
+            <div class="summary-card">
+                <div class="icon partial">⚠️</div>
+                <div class="count partial">0</div>
+                <div class="label">Partial</div>
+            </div>
+        </div>
+        
+        <div class="table-container">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Test Name</th>
+                        <th>Status</th>
+                        <th>Model</th>
+                        <th>Execution Time</th>
+                    </tr>
+                </thead>
+                <tbody>                    <tr class="table-row" onclick="toggleDetails('details-0')">
+                        <td>simple-question</td>
+                        <td><span class="status-badge status-pass">PASS</span></td>
+                        <td>openrouter</td>
+                        <td class="execution-time">11002ms</td>
+                    </tr>
+                    <tr id="details-0" class="details-row">
+                        <td colspan="4">
+                            <div class="details-content">
+                                <div class="details-grid">
+                                    <div class="details-section">
+                                        <h4>Expected Output</h4>
+                                        <pre>Java Virtual Machine</pre>
+                                    </div>
+                                    <div class="details-section">
+                                        <h4>Actual Output</h4>
+                                        <pre>The **Java Virtual Machine (JVM)** is a crucial component of the Java Runtime Environment (JRE) that executes Java bytecode. It provides a platform-independent execution environment, allowing Java programs to run on any device or operating system that has a compatible JVM (hence Java&#39;s &quot;write once, run anywhere&quot; principle).
+
+### **Key Features of the JVM:**
+1. **Platform Independence:** Converts Java bytecode (`.class` files) into machine-specific instructions.
+2. **Memory Management:** Handles memory allocation, garbage collection (automatic memory cleanup), and optimization.
+3. **Security:** Enforces access controls and sandboxing to prevent unsafe operations.
+4. **Just-In-Time (JIT) Compilation:** Improves performance by compiling bytecode to native machine code at runtime.
+5. **Multi-threading Support:** Manages threads for concurrent execution.
+
+### **How the JVM Works:**
+1. **Compilation:** Java source code (`.java`) is compiled into bytecode (`.class`) by the **Java Compiler (javac)**.
+2. **Execution:** The JVM interprets or JIT-compiles the bytecode into native machine code.
+3. **Runtime:** Manages memory, security, and system resources during execution.
+
+### **JVM vs. JRE vs. JDK:**
+- **JVM:** Executes bytecode (part of JRE).
+- **JRE (Java Runtime Environment):** Includes JVM + libraries needed to run Java apps.
+- **JDK (Java Development Kit):** Includes JRE + tools for developing Java apps (e.g., `javac`, debuggers).
+
+The JVM is language-agnostic—other languages like Kotlin and Scala also compile to bytecode and run on the JVM.</pre>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>                    <tr class="table-row" onclick="toggleDetails('details-1')">
+                        <td>technical-question</td>
+                        <td><span class="status-badge status-fail">FAIL</span></td>
+                        <td>openrouter</td>
+                        <td class="execution-time">11053ms</td>
+                    </tr>
+                    <tr id="details-1" class="details-row">
+                        <td colspan="4">
+                            <div class="details-content">
+                                <div class="details-grid">
+                                    <div class="details-section">
+                                        <h4>Expected Output</h4>
+                                        <pre>dependency injection</pre>
+                                    </div>
+                                    <div class="details-section">
+                                        <h4>Actual Output</h4>
+                                        <pre>**Dependency Injection (DI) in Simple Terms:**
+
+Imagine you’re building a toy car. Instead of hard-wiring the wheels (making them permanently attached), you *inject* them into the car. This way, you can easily swap the wheels for different types (e.g., big, small, or colorful ones) without rebuilding the entire car.
+
+**In Software Terms:**  
+Dependency Injection is a technique where an object (e.g., a class) receives its dependencies (e.g., services or other objects it needs) from *outside* instead of creating them itself. This makes your code:
+1. **Easier to test** (you can inject &quot;mock&quot; dependencies for testing).  
+2. **More flexible** (you can change dependencies without rewriting the class).  
+3. **Cleaner** (classes focus on their main job, not creating dependencies).  
+
+**Example:**  
+```python
+# Without DI: The class creates its own dependency (hard to change/test).
+class Car:
+    def __init__(self):
+        self.engine = Engine()  # Bad: Car *depends* on a specific Engine.
+
+# With DI: The dependency is &quot;injected&quot; from outside (flexible!).
+class Car:
+    def __init__(self, engine):  # Good: Engine is injected.
+        self.engine = engine
+
+# Usage:
+my_engine = Engine()  # Create the dependency first.
+my_car = Car(my_engine)  # Inject it into the Car.
+```
+
+**Key Idea:**  
+*&quot;Give me what I need, don’t make me build it myself.&quot;*  
+
+This is often managed by a **DI container** (a tool that handles dependency creation and injection automatically), but the core concept is about *decoupling* dependencies.</pre>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>                    <tr class="table-row" onclick="toggleDetails('details-2')">
+                        <td>reasoning-task</td>
+                        <td><span class="status-badge status-fail">FAIL</span></td>
+                        <td>openrouter</td>
+                        <td class="execution-time">5326ms</td>
+                    </tr>
+                    <tr id="details-2" class="details-row">
+                        <td colspan="4">
+                            <div class="details-content">
+                                <div class="details-grid">
+                                    <div class="details-section">
+                                        <h4>Expected Output</h4>
+                                        <pre>No</pre>
+                                    </div>
+                                    <div class="details-section">
+                                        <h4>Actual Output</h4>
+                                        <pre>To answer this question, we need to analyze the given information and the logical reasoning behind it.
+
+Given information:
+1. All cats are animals.
+2. Some animals are pets.
+
+The question is asking whether we can conclude that all cats are pets.
+
+To determine this, we need to consider the relationship between the sets of &quot;cats&quot;, &quot;animals&quot;, and &quot;pets&quot;.
+
+Step 1: Understand the relationship between &quot;cats&quot; and &quot;animals&quot;.
+Since the statement says &quot;All cats are animals,&quot; it means that the set of &quot;cats&quot; is a subset of the set of &quot;animals.&quot; In other words, every cat is an animal, but not every animal is a cat.
+
+Step 2: Understand the relationship between &quot;animals&quot; and &quot;pets.&quot;
+The statement says &quot;Some animals are pets.&quot; This means that the set of &quot;pets&quot; is a subset of the set of &quot;animals,&quot; but it does not specify that all animals are pets.
+
+Step 3: Analyze the conclusion.
+The question is asking whether we can conclude that &quot;all cats are pets.&quot; To determine this, we need to consider the relationships we established in the previous steps.
+
+Since all cats are animals, and some animals are pets, it does not necessarily follow that all cats are pets. This is because the set of &quot;pets&quot; is a subset of the set of &quot;animals,&quot; but it does not include all animals.
+
+Therefore, based on</pre>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr><tr class="table-row" onclick="toggleDetails('details-3')">
+    <td>simple-question</td>
+    <td><span class="status-badge status-pass">PASS</span></td>
+    <td>openrouter</td>
+    <td class="execution-time">1413ms</td>
+</tr>
+<tr id="details-3" class="details-row">
+    <td colspan="4">
+        <div class="details-content">
+            <div class="details-grid">
+                <div class="details-section">
+                    <h4>Expected Output</h4>
+                    <pre>42</pre>
+                </div>
+                <div class="details-section">
+                    <h4>Actual Output</h4>
+                    <pre>15 + 27 = 42.</pre>
+                </div>
+            </div>
+        </div>
+    </td>
+</tr>                    <tr class="table-row" onclick="toggleDetails('details-4')">
+                        <td>technical-question</td>
+                        <td><span class="status-badge status-pass">PASS</span></td>
+                        <td>openrouter</td>
+                        <td class="execution-time">12953ms</td>
+                    </tr>
+                    <tr id="details-4" class="details-row">
+                        <td colspan="4">
+                            <div class="details-content">
+                                <div class="details-grid">
+                                    <div class="details-section">
+                                        <h4>Expected Output</h4>
+                                        <pre>REST</pre>
+                                    </div>
+                                    <div class="details-section">
+                                        <h4>Actual Output</h4>
+                                        <pre>Sure, I&#39;d be happy to explain REST API in simple terms for beginners.
+
+REST stands for Representational State Transfer. It&#39;s a way for different software systems to communicate with each other over the internet.
+
+Imagine you have a website, and you want to display some information on that website, like a list of products or a user&#39;s profile. Instead of building all that functionality directly into your website, you can use a REST API to fetch that information from another system.
+
+A REST API is like a middleman that allows your website to talk to another system and get the data it needs. It&#39;s a standardized way for different software systems to interact with each other.
+
+Here&#39;s how it works:
+
+1. Your website sends a request to the REST API, asking for specific information (like a list of products).
+2. The REST API receives the request and understands what your website is asking for.
+3. The REST API then goes and retrieves the requested information from the other system.
+4. The REST API sends the information back to your website, and your website can then display it to the user.
+
+The great thing about REST APIs is that they use a common set of rules and protocols, so different software systems can easily communicate with each other, even if they were built using different technologies.
+
+Does this help explain what a REST API is and how it works? Let me know if you have any other questions!</pre>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <script>
+        function toggleDetails(id) {
+            const detailsRow = document.getElementById(id);
+            if (detailsRow.style.display === 'none' || detailsRow.style.display === '') {
+                detailsRow.style.display = 'table-row';
+            } else {
+                detailsRow.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>

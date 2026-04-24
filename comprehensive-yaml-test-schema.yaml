@@ -1,0 +1,483 @@
+suite:
+  name: "Advanced LLM Testing Suite"
+  version: "2.1.0"
+  description: "Comprehensive test suite demonstrating all features including optimization, baselines, and regression detection"
+  author: "AI Platform Team"
+  tags: ["integration", "optimization", "baseline", "regression"]
+  domain: "reasoning"  # Options: reasoning, summarization, coding, qa, creative, classification
+  difficulty: "advanced"  # Options: basic, intermediate, advanced, expert
+  priority: "high"  # Options: low, medium, high, critical
+  created_at: "2024-01-15T10:30:00Z"
+  updated_at: "2024-01-20T14:45:00Z"
+
+
+agents:
+  - name: "gpt4-reasoning-agent"
+    provider: "openai"
+    model: "gpt-4"
+    
+    system_prompt: "You are a precise reasoning assistant. Think step by step and provide clear, logical answers."
+    
+    temperature: 0.1
+    max_tokens: 1000
+    top_p: 0.95
+    frequency_penalty: 0.0
+    presence_penalty: 0.0
+    
+    additional_parameters:
+      seed: 42
+      response_format: "text"
+      
+  - name: "claude-analytical-agent"
+    provider: "openrouter"
+    model: "anthropic/claude-3-sonnet"
+    system_prompt: "You are an analytical assistant with access to tools."
+    temperature: 0.2
+    max_tokens: 2000
+    
+    tools:
+      - type: "function"
+        function:
+          name: "calculate"
+          description: "Perform mathematical calculations"
+          parameters:
+            type: "object"
+            properties:
+              expression:
+                type: "string"
+                description: "Mathematical expression to evaluate"
+            required: ["expression"]
+
+prompts:
+  - id: "reasoning_task"
+    name: "Logical Reasoning Task"
+    template: "Analyze the following problem step by step: {{problem}}. Provide your reasoning and conclusion."
+    
+  - id: "conversation_flow"
+    name: "Multi-turn Conversation"
+    template: |
+      System: You are helping with {{task_type}}.
+      User: {{initial_question}}
+      Assistant: {{expected_response}}
+      User: {{followup_question}}
+    
+  - id: "document_analysis"
+    name: "Document Analysis with Context"
+    template: |
+      Context: {{document_content}}
+      
+      Instructions: {{analysis_instructions}}
+      
+      Question: {{question}}
+      
+      Please provide a detailed analysis based on the context provided.
+
+tests:
+  - prompt_id: "reasoning_task"
+    agent: "gpt4-reasoning-agent"
+    variables:
+      problem: "If all cats are animals and some animals are pets, can we conclude that all cats are pets?"
+    expected: "No, we cannot conclude that all cats are pets"
+    evaluator: "exact"
+    metadata:
+      description: "Tests logical reasoning with syllogisms"
+      category: "logic"
+      difficulty: "intermediate"
+      
+  - prompt_id: "reasoning_task"
+    agent: "claude-analytical-agent"
+    variables:
+      problem: "A train travels 120 km in 2 hours. What is its average speed?"
+    
+    expected_outputs:
+      - value: "60 km/h"
+        evaluator: "contains"
+        weight: 0.6
+      - value: "60"
+        evaluator: "regex"
+        pattern: "\\b60\\b"
+        weight: 0.4
+        
+  - prompt_id: "document_analysis"
+    agent: "gpt4-reasoning-agent"
+    variables:
+      document_content: "The quarterly revenue increased by 15% to $2.5M..."
+      analysis_instructions: "Extract key financial metrics"
+      question: "What was the revenue growth?"
+    expected: |
+      {
+        "revenue_growth": "15%",
+        "current_revenue": "$2.5M",
+        "confidence": "high"
+      }
+    evaluator: "json_schema"
+    schema:
+      type: "object"
+      properties:
+        revenue_growth:
+          type: "string"
+          pattern: "\\d+%"
+        current_revenue:
+          type: "string"
+          pattern: "\\$[\\d.]+M"
+        confidence:
+          type: "string"
+          enum: ["low", "medium", "high"]
+      required: ["revenue_growth", "current_revenue"]
+
+evaluation:
+  default_evaluator: "contains"
+  
+  thresholds:
+    pass_score: 0.7
+    warning_score: 0.5
+    
+  criteria:
+    - name: "correctness"
+      weight: 0.6
+      evaluator: "llm_judge"
+      config:
+        model: "gpt-4"
+        prompt: "Rate the correctness of this answer on a scale of 0-1"
+        
+    - name: "completeness"
+      weight: 0.3
+      evaluator: "custom"
+      config:
+        function: "check_completeness"
+        
+    - name: "clarity"
+      weight: 0.1
+      evaluator: "llm_judge"
+      config:
+        model: "gpt-3.5-turbo"
+        prompt: "Rate the clarity of this response on a scale of 0-1"
+
+metrics:
+  - name: "latency"
+    type: "LATENCY"
+    enabled: true
+    threshold: 5000  # milliseconds
+    
+  - name: "token_usage"
+    type: "TOKEN_USAGE"
+    enabled: true
+    threshold: 2000  # max tokens
+    
+  - name: "cost"
+    type: "CUSTOM"
+    evaluator: "cost_calculator"
+    enabled: true
+    threshold: 0.50  # dollars
+    
+  - name: "semantic_similarity"
+    type: "CUSTOM"
+    evaluator: "embedding_similarity"
+    weight: 0.8
+    threshold: 0.85
+    config:
+      model: "text-embedding-ada-002"
+      
+  - name: "consistency"
+    type: "CUSTOM"
+    evaluator: "variance_calculator"
+    description: "Measures response consistency across multiple runs"
+    config:
+      runs: 3
+      variance_threshold: 0.1
+
+optimizer:
+  enabled: true
+  strategy: "llm_guided"  # Options: few_shot, instruction_rewrite, cot_injection, compression, llm_guided
+  search_strategy: "evolutionary"  # Options: grid_search, random_search, evolutionary, llm_guided
+  mode: "apply"  # Options: suggest, apply
+  type: "llm"  # Options: llm, rule_based, hybrid
+  iterations: 3
+  evaluation_loop:
+    candidates_per_iteration: 5
+    selection_criteria:
+      - metric: "correctness"
+        weight: 0.5
+        direction: "maximize"
+      - metric: "latency"
+        weight: 0.3
+        direction: "minimize"
+      - metric: "token_usage"
+        weight: 0.2
+        direction: "minimize"
+    early_stopping:
+      enabled: true
+      patience: 2
+      min_improvement: 0.05
+  
+  baseline:
+    prompt_id: "reasoning_task"
+    min_improvement: 0.1
+    significance_test:
+      enabled: true
+      method: "t_test"
+      alpha: 0.05
+  
+  llm:
+    provider: "openai"
+    model: "gpt-4"
+    temperature: 0.3
+    max_tokens: 2000
+    system_prompt: |
+      You are an expert prompt engineer. Analyze the given prompt and test results, 
+      then suggest specific improvements to increase accuracy and efficiency.
+      
+      Focus on:
+      1. Clarity and specificity
+      2. Proper instruction structure
+      3. Context optimization
+      4. Output format specification
+      
+  rules:
+    enable_length_optimization: true
+    enable_clarity_optimization: true
+    enable_specificity_optimization: true
+    enable_structure_optimization: true
+    
+    custom_rules:
+      - name: "remove_ambiguity"
+        description: "Remove ambiguous language"
+        pattern: "maybe|perhaps|possibly|might"
+        replacement: ""
+        enabled: true
+        priority: 1
+        
+      - name: "add_step_by_step"
+        description: "Add step-by-step instruction"
+        pattern: "analyze|solve|explain"
+        replacement: "$0 step by step"
+        enabled: true
+        priority: 2
+        
+      - name: "specify_format"
+        description: "Add output format specification"
+        pattern: "provide|give|return"
+        replacement: "$0 in a clear, structured format"
+        enabled: true
+        priority: 3
+
+datasets:
+  - name: "reasoning_benchmark"
+    source: "file://datasets/reasoning_tests.json"
+    format: "json"
+    version: "1.2"
+    
+    field_mapping:
+      prompt_template: "question"
+      expected_output: "answer"
+      metadata: "tags"
+      
+  - name: "math_problems"
+    type: "inline"
+    data:
+      - variables:
+          problem: "2 + 2 = ?"
+        expected: "4"
+      - variables:
+          problem: "10 * 5 = ?"
+        expected: "50"
+        
+  batch_config:
+    enabled: true
+    batch_size: 10
+    parallel_batches: 2
+    
+  versioning:
+    enabled: true
+    strategy: "git_hash"
+    track_changes: true
+
+execution:
+  max_parallelism: 4
+  enable_parallel_execution: true
+  
+  test_timeout: "5m"
+  suite_timeout: "30m"
+  
+  retries:
+    enabled: true
+    max_attempts: 3
+    backoff_strategy: "exponential"
+    retry_on:
+      - "timeout"
+      - "rate_limit"
+      - "server_error"
+      
+  caching:
+    enabled: true
+    strategy: "content_hash"
+    ttl: "24h"
+    cache_responses: true
+    cache_evaluations: true
+    
+  deterministic:
+    enabled: true
+    seed: 42
+    enforce_reproducibility: true
+    
+  limits:
+    max_memory: "2GB"
+    max_cpu_time: "10m"
+    max_requests_per_minute: 60
+
+
+baseline:
+  strategy: "active"  # Options: active, latest, tagged, specific
+  baseline_id: "baseline_v1.0"
+  
+  storage:
+    enabled: true
+    retention_days: 90
+    auto_cleanup: true
+    
+  regression_detection:
+    enabled: true
+    fail_on_regression: true
+    
+    rules:
+      - metric: "correctness"
+        threshold: 0.05
+        type: "relative"  # Options: absolute, relative, percentage
+        severity: "error"  # Options: info, warning, error, critical
+        
+      - metric: "latency"
+        threshold: 0.5
+        type: "relative"
+        severity: "warning"
+        
+      - metric: "token_usage"
+        threshold: 0.2
+        type: "relative"
+        severity: "warning"
+        
+      - metric: "success_rate"
+        threshold: 0.05
+        type: "absolute"
+        severity: "error"
+        
+    statistical_analysis:
+      enabled: true
+      confidence_level: 0.95
+      min_sample_size: 10
+
+reporting:
+  formats:
+    - type: "html"
+      enabled: true
+      template: "premium"
+      output_path: "reports/"
+      
+    - type: "json"
+      enabled: true
+      output_path: "reports/data/"
+      
+    - type: "junit"
+      enabled: true
+      output_path: "reports/junit.xml"
+      
+  tracing:
+    enabled: true
+    level: "detailed"  # Options: basic, detailed, verbose
+    include_prompts: true
+    include_responses: true
+    include_intermediate_steps: true
+    
+  error_handling:
+    capture_stack_traces: true
+    include_context: true
+    sanitize_sensitive_data: true
+    
+  notifications:
+    - type: "webhook"
+      url: "https://api.slack.com/webhooks/..."
+      events: ["test_failure", "regression_detected"]
+      
+    - type: "email"
+      recipients: ["team@company.com"]
+      events: ["suite_completion"]
+
+advanced:
+  ab_testing:
+    enabled: true
+    variants:
+      - name: "variant_a"
+        prompt_modifications:
+          - add_examples: true
+          - use_cot: false
+      - name: "variant_b"
+        prompt_modifications:
+          - add_examples: false
+          - use_cot: true
+    traffic_split: [0.5, 0.5]
+    
+  multimodal:
+    enabled: true
+    supported_types: ["text", "image", "audio"]
+    
+  custom_evaluators:
+    - name: "domain_specific_evaluator"
+      type: "python"
+      module: "evaluators.domain_specific"
+      config:
+        domain: "medical"
+        
+  integrations:
+    ci_cd:
+      enabled: true
+      fail_build_on_regression: true
+      
+    monitoring:
+      enabled: true
+      metrics_endpoint: "http://prometheus:9090"
+      
+    version_control:
+      enabled: true
+      track_prompt_changes: true
+      auto_tag_baselines: true
+
+environment:
+  type: "production"  # Options: development, staging, production
+  
+  global_variables:
+    api_base_url: "https://api.example.com"
+    test_user_id: "test_user_123"
+    
+  overrides:
+    development:
+      execution:
+        max_parallelism: 1
+      optimizer:
+        iterations: 1
+    production:
+      execution:
+        max_parallelism: 8
+      optimizer:
+        iterations: 5
+
+validation:
+  strict_mode: true
+  validate_on_load: true
+  
+  constraints:
+    max_tests_per_suite: 1000
+    max_prompt_length: 10000
+    max_expected_length: 5000
+    
+  required_fields:
+    - "suite.name"
+    - "suite.version"
+    - "agents"
+    - "prompts"
+    - "tests"
+    
+  custom_rules:
+    - name: "unique_prompt_ids"
+      description: "Ensure all prompt IDs are unique"
+      
+    - name: "valid_agent_references"
+      description: "Ensure all agent references exist"
