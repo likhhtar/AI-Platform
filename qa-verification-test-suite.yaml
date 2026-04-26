@@ -1,0 +1,242 @@
+suite:
+  name: "QA Verification Test Suite - Anti-Cheating & Overfitting Detection"
+  version: "1.0"
+  description: "Comprehensive test suite designed to detect cheating, hardcoding, and overfitting in prompt optimization systems"
+
+optimizer:
+  enabled: false
+
+prompts:
+  - id: "geography_capital"
+    template: "What is the capital of {{country}}?"
+  
+  - id: "math_simple"
+    template: "Calculate: {{expression}}"
+  
+  - id: "greeting_basic"
+    template: "Say hello to {{name}} in {{language}}"
+
+  - id: "geography_capital_paraphrase"
+    template: "Which city serves as the capital of {{country}}?"
+  
+  - id: "geography_capital_formal"
+    template: "Please identify the capital city of {{country}}."
+  
+  - id: "geography_capital_casual"
+    template: "{{country}}'s capital is?"
+  
+  - id: "math_simple_paraphrase"
+    template: "Compute the result of {{expression}}"
+  
+  - id: "math_simple_verbose"
+    template: "Please solve this mathematical expression: {{expression}}"
+  
+  - id: "greeting_paraphrase"
+    template: "Greet {{name}} using the {{language}} language"
+  
+  - id: "greeting_formal"
+    template: "Please provide a greeting for {{name}} in {{language}}"
+
+  - id: "geography_trap_fake_country"
+    template: "What is the capital of {{country}}?"
+  
+  - id: "geography_trap_ambiguous"
+    template: "What is the capital of {{country}}?"
+  
+  - id: "math_trap_invalid"
+    template: "Calculate: {{expression}}"
+  
+  - id: "math_trap_edge_case"
+    template: "Calculate: {{expression}}"
+
+  - id: "geography_multiple_capitals"
+    template: "What is the capital of {{country}}?"
+  
+  - id: "math_multiple_formats"
+    template: "What is {{expression}}?"
+
+agents:
+  - name: "test_agent"
+    system_prompt: "You are a helpful assistant. Answer questions accurately and concisely."
+    model: "mock"
+    provider: "mock"
+
+test_cases:
+  - prompt_id: "geography_capital"
+    agents: ["test_agent"]
+    variables:
+      country: "France"
+    expected: "Paris"
+    evaluator: "contains"
+    metadata:
+      category: "baseline"
+      pattern: "geography"
+  
+  - prompt_id: "math_simple"
+    agents: ["test_agent"]
+    variables:
+      expression: "15 + 27"
+    expected: "42"
+    evaluator: "exact"
+    metadata:
+      category: "baseline"
+      pattern: "math"
+  
+  - prompt_id: "greeting_basic"
+    agents: ["test_agent"]
+    variables:
+      name: "Anna"
+      language: "French"
+    expected: "Bonjour"
+    evaluator: "contains"
+    metadata:
+      category: "baseline"
+      pattern: "greeting"
+
+  - prompt_id: "geography_capital_paraphrase"
+    agents: ["test_agent"]
+    variables:
+      country: "France"
+    expected: "Paris"
+    evaluator: "contains"
+    metadata:
+      category: "paraphrase"
+      pattern: "geography"
+      baseline_equivalent: "geography_capital"
+  
+  - prompt_id: "geography_capital_formal"
+    agents: ["test_agent"]
+    variables:
+      country: "Germany"
+    expected: "Berlin"
+    evaluator: "contains"
+    metadata:
+      category: "paraphrase"
+      pattern: "geography"
+      baseline_equivalent: "geography_capital"
+  
+  - prompt_id: "geography_capital_casual"
+    agents: ["test_agent"]
+    variables:
+      country: "Italy"
+    expected: "Rome"
+    evaluator: "contains"
+    metadata:
+      category: "paraphrase"
+      pattern: "geography"
+      baseline_equivalent: "geography_capital"
+  
+  - prompt_id: "math_simple_paraphrase"
+    agents: ["test_agent"]
+    variables:
+      expression: "25 + 17"
+    expected: "42"
+    evaluator: "exact"
+    metadata:
+      category: "paraphrase"
+      pattern: "math"
+      baseline_equivalent: "math_simple"
+  
+  - prompt_id: "math_simple_verbose"
+    agents: ["test_agent"]
+    variables:
+      expression: "30 + 12"
+    expected: "42"
+    evaluator: "exact"
+    metadata:
+      category: "paraphrase"
+      pattern: "math"
+      baseline_equivalent: "math_simple"
+
+  - prompt_id: "geography_trap_fake_country"
+    agents: ["test_agent"]
+    variables:
+      country: "Atlantis"
+    expected: "unknown"
+    evaluator: "contains"
+    metadata:
+      category: "trap"
+      pattern: "geography"
+      trap_type: "fake_entity"
+  
+  - prompt_id: "geography_trap_ambiguous"
+    agents: ["test_agent"]
+    variables:
+      country: "South Africa"  # Has multiple capitals
+    expected: "Cape Town"  # If optimized prompt hardcodes "Pretoria", this will fail
+    evaluator: "contains"
+    metadata:
+      category: "trap"
+      pattern: "geography"
+      trap_type: "ambiguous_answer"
+  
+  - prompt_id: "math_trap_invalid"
+    agents: ["test_agent"]
+    variables:
+      expression: "5 / 0"
+    expected: "undefined"
+    evaluator: "contains"
+    metadata:
+      category: "trap"
+      pattern: "math"
+      trap_type: "invalid_operation"
+  
+  - prompt_id: "math_trap_edge_case"
+    agents: ["test_agent"]
+    variables:
+      expression: "0 * 999"
+    expected: "0"
+    evaluator: "exact"
+    metadata:
+      category: "trap"
+      pattern: "math"
+      trap_type: "edge_case"
+
+  - prompt_id: "geography_multiple_capitals"
+    agents: ["test_agent"]
+    variables:
+      country: "Netherlands"  # Amsterdam (constitutional) vs The Hague (seat of government)
+    expected: "Amsterdam"
+    evaluator: "contains"
+    metadata:
+      category: "misleading"
+      pattern: "geography"
+      alternative_answers: ["The Hague"]
+  
+  - prompt_id: "math_multiple_formats"
+    agents: ["test_agent"]
+    variables:
+      expression: "21 / 3"
+    expected: "7"
+    evaluator: "contains"
+    metadata:
+      category: "misleading"
+      pattern: "math"
+      alternative_answers: ["7.0", "seven"]
+
+  - prompt_id: "science_element"
+    template: "What is the chemical symbol for {{element}}?"
+    agents: ["test_agent"]
+    variables:
+      element: "Gold"
+    expected: "Au"
+    evaluator: "exact"
+    metadata:
+      category: "unseen"
+      pattern: "science"
+  
+  - prompt_id: "history_year"
+    template: "In what year did {{event}} occur?"
+    agents: ["test_agent"]
+    variables:
+      event: "World War II end"
+    expected: "1945"
+    evaluator: "contains"
+    metadata:
+      category: "unseen"
+      pattern: "history"
+
+execution:
+  maxParallelism: 1
+  testTimeout: "30s"
+  enableParallelExecution: false

@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unified Test & QA Report - OpenRouter System Integration Test Suite</title>
+    <style>
+        /* Base Styles */
+* { box-sizing: border-box; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    margin: 0;
+    padding: 20px;
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    color: #333;
+    line-height: 1.6;
+}
+
+.container {
+    max-width: 1400px;
+    margin: 0 auto;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+    overflow: hidden;
+}
+
+/* Header */
+.header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 40px;
+    text-align: center;
+}
+
+.header h1 {
+    margin: 0;
+    font-size: 3em;
+    font-weight: 300;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.timestamp {
+    font-size: 0.9em;
+    opacity: 0.8;
+    margin: 10px 0;
+}
+
+/* Global Summary */
+.global-summary {
+    padding: 40px;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+}
+
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+}
+
+.summary-card {
+    background: white;
+    padding: 25px;
+    border-radius: 12px;
+    text-align: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    border-left: 5px solid #dee2e6;
+    transition: transform 0.2s;
+}
+
+.summary-card:hover {
+    transform: translateY(-2px);
+}
+
+.summary-card.success { border-left-color: #28a745; }
+.summary-card.warning { border-left-color: #ffc107; }
+.summary-card.danger { border-left-color: #dc3545; }
+.summary-card.info { border-left-color: #17a2b8; }
+.summary-card.neutral { border-left-color: #6c757d; }
+
+.card-icon {
+    font-size: 2.5em;
+    margin-bottom: 10px;
+}
+
+.summary-card h3 {
+    margin: 0 0 10px 0;
+    color: #6c757d;
+    font-size: 0.9em;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.summary-card .value {
+    font-size: 2.2em;
+    font-weight: bold;
+    color: #495057;
+    margin: 0;
+}
+
+.improvement {
+    font-size: 0.9em;
+    margin-top: 5px;
+}
+
+.improvement.positive { color: #28a745; }
+.improvement.neutral { color: #6c757d; }
+
+.subtitle {
+    font-size: 0.8em;
+    color: #6c757d;
+    margin-top: 5px;
+}
+
+/* QA Summary Section */
+.qa-summary-section {
+    padding: 40px;
+    background: #f8f9fa;
+}
+
+.qa-summary-section h2 {
+    margin: 0 0 30px 0;
+    color: #495057;
+    border-bottom: 3px solid #e9ecef;
+    padding-bottom: 15px;
+}
+
+.qa-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.qa-metric {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    border-left: 4px solid #dee2e6;
+}
+
+.qa-metric.success { border-left-color: #28a745; }
+.qa-metric.warning { border-left-color: #ffc107; }
+.qa-metric.danger { border-left-color: #dc3545; }
+
+.metric-icon {
+    font-size: 2em;
+    margin-bottom: 10px;
+}
+
+.metric-label {
+    font-size: 0.8em;
+    color: #6c757d;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 5px;
+}
+
+.metric-value {
+    font-size: 1.8em;
+    font-weight: bold;
+    color: #495057;
+}
+
+/* Red Flags */
+.red-flags-section {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    border-left: 4px solid #dc3545;
+}
+
+.red-flags-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.red-flag-item {
+    background: #f8d7da;
+    color: #721c24;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.9em;
+}
+
+.no-red-flags {
+    background: white;
+    padding: 30px;
+    border-radius: 8px;
+    text-align: center;
+    border: 2px dashed #28a745;
+}
+
+.success-icon {
+    font-size: 3em;
+    margin-bottom: 15px;
+}
+
+/* Test Results Section */
+.tests-section {
+    padding: 40px;
+}
+
+.tests-section h2 {
+    margin: 0 0 30px 0;
+    color: #495057;
+    border-bottom: 3px solid #e9ecef;
+    padding-bottom: 15px;
+}
+
+/* Test Items */
+.test-item {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    overflow: hidden;
+    transition: all 0.2s;
+}
+
+.test-item:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.test-item.passed { border-left: 4px solid #28a745; }
+.test-item.failed { border-left: 4px solid #dc3545; }
+.test-item.improved { border-left: 4px solid #17a2b8; }
+.test-item.suspicious { border-left: 4px solid #ffc107; background: #fff3cd; }
+
+.test-header {
+    padding: 20px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: background-color 0.2s;
+}
+
+.test-header:hover {
+    background-color: #f8f9fa;
+}
+
+.test-info {
+    flex: 1;
+}
+
+.test-title {
+    font-weight: bold;
+    font-size: 1.1em;
+    margin-bottom: 8px;
+}
+
+.test-badges {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.test-status {
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.status-pass {
+    background-color: #28a745;
+    color: white;
+}
+
+.status-fail {
+    background-color: #dc3545;
+    color: white;
+}
+
+.optimization-badge {
+    padding: 4px 8px;
+    border-radius: 8px;
+    font-size: 0.7em;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.optimization-badge.improved {
+    background: #d4edda;
+    color: #155724;
+}
+
+.optimization-badge.neutral {
+    background: #e2e3e5;
+    color: #383d41;
+}
+
+.suspicious-badge {
+    background: #fff3cd;
+    color: #856404;
+}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔬 OpenRouter System Integration Test Suite</h1>
+            <p>Unified Test Execution & QA Verification Report</p>
+            <p class="timestamp">2026-04-18 22:26:45</p>
+        </div>
+        
+        
+        <div class="global-summary">
+            <div class="summary-grid">
+                <div class="summary-card success">
+                    <div class="card-icon">🎯</div>
+                    <h3>Success Rate</h3>
+                    <p class="value">80%</p>
+                </div>
+                
+                
+                <div class="summary-card info">
+                    <div class="card-icon">📊</div>
+                    <h3>Total Tests</h3>
+                    <p class="value">5</p>
+                </div>
+                
+                
+                
+                <div class="summary-card success">
+                    <div class="card-icon">✅</div>
+                    <h3>Passed</h3>
+                    <p class="value">4</p>
+                </div>
+                
+                <div class="summary-card danger">
+                    <div class="card-icon">❌</div>
+                    <h3>Failed</h3>
+                    <p class="value">1</p>
+                </div>
+                
+                
+                <div class="summary-card info">
+                    <div class="card-icon">⏱️</div>
+                    <h3>Execution Time</h3>
+                    <p class="value">57105ms</p>
+                </div>
+            </div>
+        </div>
+        
+        
+        
+        
+        <div class="tests-section">
+            <h2>📋 Detailed Test Results</h2>
+        <div class="test-item passed" data-category="baseline">
+            <div class="test-header" onclick="toggleTestDetails(this)">
+                <div class="test-info">
+                    <div class="test-title">Test 1: simple-question</div>
+                    <div class="test-badges">
+                        <span class="test-status status-pass">PASS</span>
+                        
+                        
+                        <span class="category-badge category-baseline">BASELINE</span>
+                    </div>
+                </div>
+                <div class="expand-icon">▼</div>
+            </div>
+            
+            <div class="test-details">
+                <div class="test-input-section">
+                    <h4>📝 Test Input</h4>
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <h5>Variables</h5>
+                            <div class="content">question: What is JVM?</div>
+                        </div>
+                        <div class="detail-item">
+                            <h5>Expected Output</h5>
+                            <div class="content">Java Virtual Machine</div>
+                        </div>
+                    </div>
+                </div>
+                
+                
+        <div class="single-result">
+            <h4>📊 Test Result</h4>
+            <div class="detail-grid">
+                <div class="detail-item">
+                    <h5>LLM Response</h5>
+                    <div class="content">The **JVM (Java Virtual Machine)** is a crucial component of the Java platform. It is a virtual machine that enables Java bytecode to be executed on any device or operating system. Here’s a concise overview:
+
+1. **Purpose**:  
+   - The JVM provides a runtime environment for Java applications, allowing them to be platform-independent (&quot;write once, run anywhere&quot;).
+
+2. **Functionality**:  
+   - It interprets or compiles Java bytecode into machine-specific instructions for execution.  
+   - Manages memory, garbage collection, and security.
+
+3. **Components**:  
+   - **Class Loader**: Loads Java classes into memory.  
+   - **Execution Engine**: Executes bytecode (using interpretation or Just-In-Time (JIT) compilation).  
+   - **Runtime Data Areas**: Includes memory areas like the heap, stack, and method area.  
+   - **Garbage Collector**: Automatically reclaims unused memory.
+
+4. **Platform Independence**:  
+   - Java programs are compiled into bytecode (.class files), which the JVM executes. This allows Java applications to run on any device with a compatible JVM.
+
+In summary, the JVM is the runtime engine that executes Java programs, ensuring cross-platform compatibility and efficient resource management.</div>
+                </div>
+                <div class="detail-item">
+                    <h5>Evaluation</h5>
+                    <div class="content">Output contains expected substring: &#39;Java Virtual Machine&#39;</div>
+                    <div class="score-display">
+                        Score: <strong>1.00</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+                
+                
+                
+                <div class="test-metrics">
+                    <div class="metric">
+                        <div class="metric-label">Evaluator</div>
+                        <div class="metric-value">contains</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Execution Time</div>
+                        <div class="metric-value">18302ms</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Provider</div>
+                        <div class="metric-value">openrouter</div>
+                    </div>
+                    
+                </div>
+            </div>
+        </div>
+        
+        <div class="test-item passed" data-category="baseline">
+            <div class="test-header" onclick="toggleTestDetails(this)">
+                <div class="test-info">
+                    <div class="test-title">Test 2: technical-question</div>
+                    <div class="test-badges">
+                        <span class="test-status status-pass">PASS</span>
+                        
+                        
+                        <span class="category-badge category-baseline">BASELINE</span>
+                    </div>
+                </div>
+                <div class="expand-icon">▼</div>
+            </div>
+            
+            <div class="test-details">
+                <div class="test-input-section">
+                    <h4>📝 Test Input</h4>
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <h5>Variables</h5>
+                            <div class="content">concept: dependency injection</div>
+                        </div>
+                        <div class="detail-item">
+                            <h5>Expected Output</h5>
+                            <div class="content">dependency injection</div>
+                        </div>
+                    </div>
+                </div>
+                
+                
+        <div class="single-result">
+            <h4>📊 Test Result</h4>
+            <div class="detail-grid">
+                <div class="detail-item">
+                    <h5>LLM Response</h5>
+                    <div class="content">Dependency Injection (DI) is a design pattern used in programming to make your code more flexible, testable, and maintainable. Here&#39;s a simple explanation:
+
+Imagine you’re building a toy car. Instead of gluing the wheels directly onto the car, you design it so the wheels can be easily attached or replaced. This way, you can use different types of wheels (big, small, colorful) without changing the car itself.
+
+In programming, **dependency injection** works similarly:
+
+1. **What is a dependency?**  
+   A dependency is something your code needs to work, like a service, object, or function. For example, if your app needs to send emails, the email service is a dependency.
+
+2. **What is injection?**  
+   Instead of your code creating its own dependencies (like gluing the wheels), you &quot;inject&quot; them from the outside. This means someone else (like a framework or a configuration) provides the dependencies to your code.
+
+### Why is this useful?
+- **Flexibility:** You can easily swap out dependencies without changing your code. For example, you could switch from one email service to another.
+- **Testability:** You can inject mock dependencies during testing to isolate and test your code.
+- **Maintainability:** Your code becomes cleaner and easier to manage because it doesn’t handle the creation of its dependencies.
+
+### Example in Code:
+Without Dependency Injection:
+```python
+class EmailService:
+    def send_email(self, message):
+        print(f&quot;Sending email: {message}&quot;)
+
+class UserRegistration:
+    def __init__(self):
+        self.email_service = EmailService()  # Creates its own dependency
+
+    def register_user(self, user):
+        self.email_service.send_email(&quot;Welcome!&quot;)
+```
+
+With Dependency Injection:
+```python
+class EmailService:
+    def send_email(self, message):
+        print(f&quot;Sending email: {message}&quot;)
+
+class UserRegistration:
+    def __init__(self, email_service):  # Dependency is injected
+        self.email_service = email_service
+
+    def register_user(self, user):
+        self.email_service.send_email(&quot;Welcome!&quot;)
+
+# Usage
+email_service = EmailService()
+user_registration = UserRegistration(email_service)  # Injecting the dependency
+```
+
+In the second example, `UserRegistration` doesn’t create its own `EmailService`. Instead, it receives it from the outside, making it more flexible and easier to test.
+
+</div>
+                </div>
+                <div class="detail-item">
+                    <h5>Evaluation</h5>
+                    <div class="content">Output contains expected substring: &#39;dependency injection&#39;</div>
+                    <div class="score-display">
+                        Score: <strong>1.00</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+                
+                
+                
+                <div class="test-metrics">
+                    <div class="metric">
+                        <div class="metric-label">Evaluator</div>
+                        <div class="metric-value">contains</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Execution Time</div>
+                        <div class="metric-value">30993ms</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Provider</div>
+                        <div class="metric-value">openrouter</div>
+                    </div>
+                    
+                </div>
+            </div>
+        </div>
+        
+        <div class="test-item failed" data-category="baseline">
+            <div class="test-header" onclick="toggleTestDetails(this)">
+                <div class="test-info">
+                    <div class="test-title">Test 3: reasoning-task</div>
+                    <div class="test-badges">
+                        <span class="test-status status-fail">FAIL</span>
+                        
+                        
+                        <span class="category-badge category-baseline">BASELINE</span>
+                    </div>
+                </div>
+                <div class="expand-icon">▼</div>
+            </div>
+            
+            <div class="test-details">
+                <div class="test-input-section">
+                    <h4>📝 Test Input</h4>
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <h5>Variables</h5>
+                            <div class="content">problem: If all cats are animals and some animals are pets, can we conclude that all cats are pets?</div>
+                        </div>
+                        <div class="detail-item">
+                            <h5>Expected Output</h5>
+                            <div class="content">No</div>
+                        </div>
+                    </div>
+                </div>
+                
+                
+        <div class="single-result">
+            <h4>📊 Test Result</h4>
+            <div class="detail-grid">
+                <div class="detail-item">
+                    <h5>LLM Response</h5>
+                    <div class="content">To determine if we can conclude that all cats are pets, we need to analyze the given information and the logical relationship between the statements.
+
+Given information:
+1. All cats are animals.
+2. Some animals are pets.
+
+To conclude that all cats are pets, we need to establish a direct logical connection between the statements.
+
+Let&#39;s think through this step-by-step:
+
+Step 1: Understand the relationship between the statements.
+The first statement tells us that all cats belong to the category of &quot;animals.&quot; The second statement tells us that some animals are &quot;pets.&quot;
+
+Step 2: Identify the missing link.
+The given information does not directly state that all cats are pets. There is no explicit connection between &quot;cats&quot; and &quot;pets&quot; in the provided statements.
+
+Step 3: Analyze the logical reasoning.
+Just because all cats are animals and some animals are pets, we cannot conclude that all cats are pets. This is because the second statement only says that some animals are pets, not that all animals are pets.
+
+It is possible that some cats are pets, but it is also possible that some cats are not pets. The given information is not sufficient to make a definitive conclusion that all cats are pets.
+
+Therefore, based on the provided information, we cannot conclude that all cats are pets. The relationship between cats and pets is not directly established in the given statements.</div>
+                </div>
+                <div class="detail-item">
+                    <h5>Evaluation</h5>
+                    <div class="content">Output does not contain expected substring: &#39;No&#39;</div>
+                    <div class="score-display">
+                        Score: <strong>0.00</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+                
+                
+                
+                <div class="test-metrics">
+                    <div class="metric">
+                        <div class="metric-label">Evaluator</div>
+                        <div class="metric-value">contains</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Execution Time</div>
+                        <div class="metric-value">3612ms</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Provider</div>
+                        <div class="metric-value">openrouter</div>
+                    </div>
+                    
+                </div>
+            </div>
+        </div>
+        
+        <div class="test-item passed" data-category="baseline">
+            <div class="test-header" onclick="toggleTestDetails(this)">
+                <div class="test-info">
+                    <div class="test-title">Test 4: simple-question</div>
+                    <div class="test-badges">
+                        <span class="test-status status-pass">PASS</span>
+                        
+                        
+                        <span class="category-badge category-baseline">BASELINE</span>
+                    </div>
+                </div>
+                <div class="expand-icon">▼</div>
+            </div>
+            
+            <div class="test-details">
+                <div class="test-input-section">
+                    <h4>📝 Test Input</h4>
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <h5>Variables</h5>
+                            <div class="content">question: What is 15 + 27?</div>
+                        </div>
+                        <div class="detail-item">
+                            <h5>Expected Output</h5>
+                            <div class="content">42</div>
+                        </div>
+                    </div>
+                </div>
+                
+                
+        <div class="single-result">
+            <h4>📊 Test Result</h4>
+            <div class="detail-grid">
+                <div class="detail-item">
+                    <h5>LLM Response</h5>
+                    <div class="content">15 + 27 = 42.</div>
+                </div>
+                <div class="detail-item">
+                    <h5>Evaluation</h5>
+                    <div class="content">Output contains expected substring: &#39;42&#39;</div>
+                    <div class="score-display">
+                        Score: <strong>1.00</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+                
+                
+                
+                <div class="test-metrics">
+                    <div class="metric">
+                        <div class="metric-label">Evaluator</div>
+                        <div class="metric-value">contains</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Execution Time</div>
+                        <div class="metric-value">1277ms</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Provider</div>
+                        <div class="metric-value">openrouter</div>
+                    </div>
+                    
+                </div>
+            </div>
+        </div>
+        
+        <div class="test-item passed" data-category="baseline">
+            <div class="test-header" onclick="toggleTestDetails(this)">
+                <div class="test-info">
+                    <div class="test-title">Test 5: technical-question</div>
+                    <div class="test-badges">
+                        <span class="test-status status-pass">PASS</span>
+                        
+                        
+                        <span class="category-badge category-baseline">BASELINE</span>
+                    </div>
+                </div>
+                <div class="expand-icon">▼</div>
+            </div>
+            
+            <div class="test-details">
+                <div class="test-input-section">
+                    <h4>📝 Test Input</h4>
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <h5>Variables</h5>
+                            <div class="content">concept: REST API</div>
+                        </div>
+                        <div class="detail-item">
+                            <h5>Expected Output</h5>
+                            <div class="content">REST</div>
+                        </div>
+                    </div>
+                </div>
+                
+                
+        <div class="single-result">
+            <h4>📊 Test Result</h4>
+            <div class="detail-grid">
+                <div class="detail-item">
+                    <h5>LLM Response</h5>
+                    <div class="content">Sure, I&#39;ll explain REST API in simple terms for beginners.
+
+REST stands for Representational State Transfer. It&#39;s a way for different software systems to communicate with each other over the internet.
+
+Imagine you have a website, and you want to display some information on that website, like a list of products or a user&#39;s profile. Instead of building all that functionality directly into your website, you can use a REST API to fetch that information from another system.
+
+A REST API is like a messenger that carries information between your website and the other system. When your website needs some data, it sends a request to the REST API, and the API retrieves the data from the other system and sends it back to your website.
+
+The key things to understand about REST APIs are:
+
+1. They use standard HTTP methods (like GET, POST, PUT, DELETE) to perform different actions (like retrieving, creating, updating, or deleting data).
+
+2. They use URLs (web addresses) to identify the specific data or resources you want to interact with.
+
+3. They return data in a standard format, like JSON or XML, which makes it easy for your website to understand and use the information.
+
+So, in simple terms, a REST API is a way for different software systems to talk to each other and share information over the internet, using a common set of rules and standards. It allows your website to access and use data from other systems</div>
+                </div>
+                <div class="detail-item">
+                    <h5>Evaluation</h5>
+                    <div class="content">Output contains expected substring: &#39;REST&#39;</div>
+                    <div class="score-display">
+                        Score: <strong>1.00</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+                
+                
+                
+                <div class="test-metrics">
+                    <div class="metric">
+                        <div class="metric-label">Evaluator</div>
+                        <div class="metric-value">contains</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Execution Time</div>
+                        <div class="metric-value">2921ms</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Provider</div>
+                        <div class="metric-value">openrouter</div>
+                    </div>
+                    
+                </div>
+            </div>
+        </div>
+                </div>
+        
+        <div class="footer">
+            <p>Generated by AI Platform - Unified Test & QA Report - 2026-04-18 22:26:45</p>
+        </div>
+    </div>
+    
+    <script>
+        // Toggle functionality for collapsible sections
+function toggleSection(element) {
+    const content = element.nextElementSibling;
+    const icon = element.querySelector('.toggle-icon');
+    
+    if (content.style.display === 'none') {
+        content.style.display = 'block';
+        icon.textContent = '▼';
+    } else {
+        content.style.display = 'none';
+        icon.textContent = '▶';
+    }
+}
+
+// Initialize collapsible sections
+document.addEventListener('DOMContentLoaded', function() {
+    const toggles = document.querySelectorAll('.toggle-header');
+    toggles.forEach(toggle => {
+        toggle.addEventListener('click', function() {
+            toggleSection(this);
+        });
+    });
+});
+    </script>
+</body>
+</html>

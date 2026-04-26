@@ -1,0 +1,15 @@
+llm:
+  providers:
+    deterministic:
+      enabled: true
+
+    openai:
+      enabled: false
+      api-key: ""
+
+    openrouter:
+      enabled: false
+      api-key: ""
+
+    mock:
+      enabled: false

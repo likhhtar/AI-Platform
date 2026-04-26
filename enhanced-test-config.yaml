@@ -1,0 +1,111 @@
+agents:
+  - name: gpt4-precise
+    provider: openai
+    model: "gpt-4"
+    systemPrompt: "You are a precise and accurate assistant. Provide exact, well-reasoned answers."
+    temperature: 0.1
+    maxTokens: 500
+
+  - name: gpt4-creative
+    provider: openai
+    model: "gpt-4"
+    systemPrompt: "You are a creative and innovative assistant. Think outside the box while maintaining accuracy."
+    temperature: 0.8
+    maxTokens: 500
+
+  - name: gpt35-efficient
+    provider: openai
+    model: "gpt-3.5-turbo"
+    systemPrompt: "You are an efficient assistant. Provide concise, accurate answers."
+    temperature: 0.3
+    maxTokens: 300
+
+  - name: claude-analytical
+    provider: openai
+    model: "claude-3-sonnet"
+    systemPrompt: "You are an analytical assistant. Break down problems systematically and provide detailed reasoning."
+    temperature: 0.2
+    maxTokens: 600
+
+  - name: gpt4-judge
+    provider: openai
+    model: "gpt-4"
+    systemPrompt: "You are an expert evaluator. Assess responses objectively and provide detailed feedback."
+    temperature: 0.1
+    maxTokens: 400
+
+prompts:
+  - id: reasoning-task
+    name: "Logical Reasoning Task"
+    template: "Solve this logical reasoning problem step by step: {{problem}}. Explain your reasoning clearly."
+
+  - id: creative-writing
+    name: "Creative Writing Task"
+    template: "Write a {{genre}} story about {{topic}} in exactly {{word_count}} words."
+
+  - id: factual-question
+    name: "Factual Knowledge Question"
+    template: "Answer this factual question accurately: {{question}}. Provide supporting evidence if possible."
+
+  - id: math-problem
+    name: "Mathematical Problem"
+    template: "Solve this mathematical problem: {{problem}}. Show your work step by step."
+
+  - id: code-generation
+    name: "Code Generation Task"
+    template: "Write {{language}} code to {{task}}. Include comments and error handling."
+
+tests:
+  - promptId: factual-question
+    agent: gpt4-precise
+    variables:
+      question: "What is the capital of France?"
+    expected: "Paris"
+    evaluator: exact
+
+  - promptId: reasoning-task
+    agents: ["gpt4-precise", "gpt4-creative", "claude-analytical"]
+    variables:
+      problem: "If all roses are flowers and some flowers are red, can we conclude that some roses are red?"
+    expected: "No, we cannot conclude that some roses are red from the given premises."
+    evaluator: llm-judge
+
+  - promptId: creative-writing
+    agent: gpt4-creative
+    variables:
+      genre: "science fiction"
+      topic: "time travel"
+      word_count: "100"
+    expected: "A coherent science fiction story about time travel in exactly 100 words"
+    evaluator: llm-judge
+
+  - promptId: math-problem
+    agent: gpt4-precise
+    variables:
+      problem: "Calculate the area of a circle with radius 5 units"
+    expected: "78.54"
+    evaluator: contains
+
+  - promptId: code-generation
+    agents: ["gpt4-precise", "claude-analytical"]
+    variables:
+      language: "Python"
+      task: "implement a binary search algorithm"
+    expected: "A correct Python implementation of binary search with proper error handling"
+    evaluator: llm-judge
+
+  - promptId: factual-question
+    agents: ["gpt4-precise", "gpt35-efficient"]
+    variables:
+      question: "Explain the concept of machine learning in simple terms"
+    expected: "A clear, accurate explanation of machine learning suitable for beginners"
+    evaluator: llm-judge
+
+  - promptId: creative-writing
+    agent: gpt4-creative
+    variables:
+      genre: "mystery"
+      topic: "locked room"
+      word_count: "150"
+    expected: "An engaging mystery story about a locked room scenario"
+    evaluator: llm-judge

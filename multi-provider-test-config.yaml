@@ -1,0 +1,144 @@
+agents:
+  - name: gpt4-precise
+    provider: openai
+    model: "gpt-4"
+    systemPrompt: "You are a precise and accurate assistant. Provide exact, well-reasoned answers."
+    temperature: 0.1
+    maxTokens: 500
+
+  - name: gpt4-turbo-efficient
+    provider: openai
+    model: "gpt-4-turbo"
+    systemPrompt: "You are an efficient assistant. Provide concise, accurate answers quickly."
+    temperature: 0.3
+    maxTokens: 400
+
+  - name: gpt35-budget
+    provider: openai
+    model: "gpt-3.5-turbo"
+    systemPrompt: "You are a cost-effective assistant. Provide good answers efficiently."
+    temperature: 0.5
+    maxTokens: 300
+
+  - name: claude-sonnet-analytical
+    provider: anthropic
+    model: "claude-3.5-sonnet-20241022"
+    systemPrompt: "You are Claude, an analytical assistant. Break down problems systematically and provide detailed reasoning."
+    temperature: 0.2
+    maxTokens: 600
+
+  - name: claude-haiku-fast
+    provider: anthropic
+    model: "claude-3.5-haiku-20241022"
+    systemPrompt: "You are Claude Haiku, a fast and efficient assistant. Provide quick, accurate responses."
+    temperature: 0.4
+    maxTokens: 300
+
+  - name: claude-opus-creative
+    provider: anthropic
+    model: "claude-3-opus-20240229"
+    systemPrompt: "You are Claude Opus, a creative and thoughtful assistant. Provide innovative and well-reasoned responses."
+    temperature: 0.7
+    maxTokens: 800
+
+  - name: gemini-pro-balanced
+    provider: gemini
+    model: "gemini-1.5-pro"
+    systemPrompt: "You are Gemini Pro, a balanced assistant. Provide comprehensive and accurate responses."
+    temperature: 0.4
+    maxTokens: 500
+
+  - name: gemini-flash-quick
+    provider: gemini
+    model: "gemini-1.5-flash"
+    systemPrompt: "You are Gemini Flash, a quick assistant. Provide fast, accurate responses."
+    temperature: 0.3
+    maxTokens: 300
+
+  - name: gpt4-judge
+    provider: openai
+    model: "gpt-4"
+    systemPrompt: "You are an expert evaluator. Assess responses objectively and provide detailed feedback."
+    temperature: 0.1
+    maxTokens: 400
+
+prompts:
+  - id: reasoning-task
+    name: "Logical Reasoning Task"
+    template: "Solve this logical reasoning problem step by step: {{problem}}. Explain your reasoning clearly."
+
+  - id: creative-writing
+    name: "Creative Writing Task"
+    template: "Write a {{genre}} story about {{topic}} in exactly {{word_count}} words."
+
+  - id: factual-question
+    name: "Factual Knowledge Question"
+    template: "Answer this factual question accurately: {{question}}. Provide supporting evidence if possible."
+
+  - id: code-generation
+    name: "Code Generation Task"
+    template: "Write {{language}} code to {{task}}. Include comments and error handling."
+
+  - id: cost-efficiency-test
+    name: "Cost Efficiency Test"
+    template: "Provide a concise but comprehensive answer to: {{question}}"
+
+tests:
+  - promptId: reasoning-task
+    agents: ["gpt4-precise", "claude-sonnet-analytical", "gemini-pro-balanced"]
+    variables:
+      problem: "If all roses are flowers and some flowers are red, can we conclude that some roses are red?"
+    expected: "No, we cannot conclude that some roses are red from the given premises."
+    evaluator: llm-judge
+
+  - promptId: cost-efficiency-test
+    agents: ["gpt35-budget", "claude-haiku-fast", "gemini-flash-quick"]
+    variables:
+      question: "Explain machine learning in simple terms"
+    expected: "A clear, concise explanation of machine learning"
+    evaluator: llm-judge
+
+  - promptId: creative-writing
+    agents: ["gpt4-precise", "claude-opus-creative", "gemini-pro-balanced"]
+    variables:
+      genre: "science fiction"
+      topic: "AI consciousness"
+      word_count: "150"
+    expected: "A coherent science fiction story about AI consciousness in exactly 150 words"
+    evaluator: llm-judge
+
+  - promptId: code-generation
+    agents: ["gpt4-turbo-efficient", "claude-sonnet-analytical", "gemini-pro-balanced"]
+    variables:
+      language: "Python"
+      task: "implement a binary search algorithm"
+    expected: "A correct Python implementation of binary search with proper error handling"
+    evaluator: llm-judge
+
+  - promptId: factual-question
+    agent: gpt4-precise
+    variables:
+      question: "What is the capital of France?"
+    expected: "Paris"
+    evaluator: exact
+
+  - promptId: factual-question
+    agent: claude-sonnet-analytical
+    variables:
+      question: "What is the capital of Germany?"
+    expected: "Berlin"
+    evaluator: exact
+
+  - promptId: factual-question
+    agent: gemini-pro-balanced
+    variables:
+      question: "What is the capital of Japan?"
+    expected: "Tokyo"
+    evaluator: exact
+
+  - promptId: reasoning-task
+    agents: ["gpt4-precise", "gpt4-turbo-efficient", "gpt35-budget"]
+    variables:
+      problem: "A farmer has 17 sheep. All but 9 die. How many are left?"
+    expected: "9 sheep are left"
+    evaluator: llm-judge

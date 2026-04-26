@@ -1,0 +1,62 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: ai-platform
+  
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+    deserialization:
+      fail-on-unknown-properties: false
+
+aiplatform:
+  judge:
+    fallback-policy: FAIL_FAST
+    default-provider: openai
+    default-model: gpt-4
+    default-agent-name: judge-agent
+
+llm:
+  providers:
+    deterministic:
+      enabled: false
+
+    openai:
+      enabled: false
+      api-key: ${OPENAI_API_KEY:}
+      base-url: https://api.openai.com
+      default-model: gpt-3.5-turbo
+      timeout: 30s
+      max-retries: 3
+      retry-delay: 1s
+    
+    mock:
+      enabled: false
+
+    openrouter:
+      enabled: false
+      api-key: ${OPENROUTER_API_KEY:}
+      base-url: https://openrouter.ai/api/v1
+      default-model: deepseek/deepseek-chat
+      timeout: 30s
+      max-retries: 3
+      retry-delay: 1s
+
+logging:
+  level:
+    ru.yourorg.diploma.aiplatform: DEBUG
+    org.springframework.web: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when_authorized
