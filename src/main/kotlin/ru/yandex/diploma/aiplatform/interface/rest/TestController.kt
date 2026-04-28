@@ -2,7 +2,6 @@ package ru.yandex.diploma.aiplatform.`interface`.rest
 
 import ru.yandex.diploma.aiplatform.application.usecase.*
 import ru.yandex.diploma.aiplatform.domain.model.BaselinePersistenceMode
-import ru.yandex.diploma.aiplatform.domain.model.RegressionConfiguration
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -17,11 +16,9 @@ class TestController(
     @PostMapping("/run")
     suspend fun runTests(@Valid @RequestBody request: RunTestsRequest): ResponseEntity<RunTestsResponse> {
         return try {
-            val regressionConfig = RegressionConfiguration.defaultConfiguration()
-                .copy(baselineMode = request.baselineMode ?: BaselinePersistenceMode.ASSERT)
             val enhancedResult = baselineExperimentRunner.executeWithBaseline(
-                request.configuration,
-                regressionConfig = regressionConfig
+                configurationSource = request.configuration,
+                baselineModeOverride = request.baselineMode ?: BaselinePersistenceMode.ASSERT
             )
             val result = enhancedResult.testRun
             

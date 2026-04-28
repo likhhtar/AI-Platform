@@ -98,7 +98,7 @@ class DefaultProviderRegistry(
         forbiddenPatterns.forEach { pattern ->
             if (providerClass.contains(pattern, ignoreCase = true)) {
                 throw ProviderRegistrationException("""
-                    🚨 MOCK PROVIDER FORBIDDEN! 🚨
+                    MOCK PROVIDER FORBIDDEN!
                     
                     Attempted to register MOCK provider: $providerClass (ID: $providerId)
                     This system MUST use REAL infrastructure only.

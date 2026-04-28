@@ -15,7 +15,8 @@ data class TestConfiguration(
     val metadata: Map<String, Any> = emptyMap(),
     val suiteMetadata: TestSuiteMetadata = TestSuiteMetadata(),
     val executionConfig: ExecutionConfig = ExecutionConfig(),
-    val optimizationConfig: OptimizationConfig? = null
+    val optimizationConfig: OptimizationConfig? = null,
+    val regressionConfiguration: RegressionConfiguration? = null
 ) {
     fun getAgent(name: String): AgentConfig? = agents.find { it.name == name }
     

@@ -72,7 +72,8 @@ class YamlTestConfigurationRepository : TestConfigurationRepository {
             val suiteMetadata = parseSuiteMetadata(data["suite"].asStringKeyedMapOrEmpty())
             val executionConfig = parseExecutionConfig(data["execution"].asStringKeyedMapOrEmpty())
             val optimizationConfig = parseOptimizationConfig(data["optimizer"].asStringKeyedMapOrEmpty())
-            
+            val regressionConfiguration = parseRegressionConfiguration(data["regression"])
+
             return TestConfiguration(
                 agents = agents,
                 prompts = prompts,
@@ -80,7 +81,8 @@ class YamlTestConfigurationRepository : TestConfigurationRepository {
                 metadata = metadata,
                 suiteMetadata = suiteMetadata,
                 executionConfig = executionConfig,
-                optimizationConfig = optimizationConfig
+                optimizationConfig = optimizationConfig,
+                regressionConfiguration = regressionConfiguration
             )
         } catch (e: Exception) {
             throw ConfigurationLoadException(
@@ -182,6 +184,91 @@ class YamlTestConfigurationRepository : TestConfigurationRepository {
         )
     }
     
+    private fun parseRegressionConfiguration(regressionRaw: Any?): RegressionConfiguration? {
+        val map = regressionRaw?.asStringKeyedMapOrEmpty() ?: return null
+        if (map.isEmpty()) return null
+        val base = RegressionConfiguration.defaultConfiguration()
+        val failOnRegression = map["failOnRegression"] as? Boolean
+            ?: map["fail_on_regression"] as? Boolean
+            ?: base.failOnRegression
+        val baselineStrategyRaw = (map["baselineStrategy"] ?: map["baseline_strategy"]) as? String
+        val baselineStrategy = baselineStrategyRaw?.trim()?.uppercase()?.let { raw ->
+            try {
+                BaselineStrategy.valueOf(raw)
+            } catch (_: IllegalArgumentException) {
+                throw IllegalArgumentException(
+                    "Invalid regression.baselineStrategy: '$baselineStrategyRaw' (expected ACTIVE, LATEST, or TAGGED)"
+                )
+            }
+        } ?: base.baselineStrategy
+        val baselineModeRaw = (map["baselineMode"] ?: map["baseline_mode"]) as? String
+        val baselineMode = baselineModeRaw?.trim()?.uppercase()?.let { raw ->
+            try {
+                BaselinePersistenceMode.valueOf(raw)
+            } catch (_: IllegalArgumentException) {
+                throw IllegalArgumentException(
+                    "Invalid regression.baselineMode: '$baselineModeRaw' (expected RECORD or ASSERT)"
+                )
+            }
+        } ?: base.baselineMode
+        val enabledMetricsRaw = map["enabledMetrics"] ?: map["enabled_metrics"]
+        val enabledMetrics = if (enabledMetricsRaw != null) {
+            enabledMetricsRaw.asStringListOrEmpty().toSet()
+        } else {
+            base.enabledMetrics
+        }
+        val rulesData = map["rules"].asListOfStringKeyedMapsOrEmpty()
+        val rules = if (rulesData.isEmpty()) base.rules else rulesData.map { parseRegressionRule(it) }
+
+        return RegressionConfiguration(
+            rules = rules,
+            enabledMetrics = enabledMetrics,
+            failOnRegression = failOnRegression,
+            baselineStrategy = baselineStrategy,
+            baselineMode = baselineMode
+        )
+    }
+
+    private fun parseRegressionRule(data: Map<String, Any>): RegressionRule {
+        val metricName =
+            data["metricName"] as? String ?: data["metric_name"] as? String
+            ?: throw IllegalArgumentException("regression.rules entry requires metricName")
+        val threshold =
+            (data["threshold"] as? Number)?.toDouble()
+                ?: throw IllegalArgumentException("regression.rules entry for '$metricName' requires threshold")
+        val typeStr = data["type"] as? String ?: RegressionType.RELATIVE.name
+        val type = try {
+            RegressionType.valueOf(typeStr.trim().uppercase())
+        } catch (_: IllegalArgumentException) {
+            throw IllegalArgumentException("Invalid regression rule type '$typeStr' for metric '$metricName'")
+        }
+        val severityStr = data["severity"] as? String ?: RegressionSeverity.WARNING.name
+        val severity = try {
+            RegressionSeverity.valueOf(severityStr.trim().uppercase())
+        } catch (_: IllegalArgumentException) {
+            throw IllegalArgumentException("Invalid regression severity '$severityStr' for metric '$metricName'")
+        }
+        val description = data["description"] as? String ?: ""
+        val directionRaw = data["direction"] as? String
+        val direction = directionRaw?.trim()?.uppercase()?.let { raw ->
+            try {
+                MetricDirection.valueOf(raw)
+            } catch (_: IllegalArgumentException) {
+                throw IllegalArgumentException(
+                    "Invalid regression rule direction '$directionRaw' for metric '$metricName'"
+                )
+            }
+        } ?: MetricDirections.forMetric(metricName)
+        return RegressionRule(
+            metricName = metricName,
+            threshold = threshold,
+            type = type,
+            severity = severity,
+            description = description,
+            direction = direction
+        )
+    }
+
     private fun parseOptimizationConfig(data: Map<String, Any>): OptimizationConfig? {
         if (data.isEmpty()) return null
         
