@@ -159,7 +159,8 @@ test_cases:
             suggestions = suggestions,
             confidence = 0.8,
             reasoning = "Test optimization reasoning",
-            executionTimeMs = 1000
+            executionTimeMs = 1000,
+            status = OptimizationStatus.APPLIED,
         )
 
         val baselineResult = createMockExperimentResult("baseline")

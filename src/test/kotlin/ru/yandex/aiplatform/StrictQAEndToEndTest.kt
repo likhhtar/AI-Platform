@@ -15,6 +15,7 @@ import ru.yandex.diploma.aiplatform.domain.model.RegressionRule
 import ru.yandex.diploma.aiplatform.domain.model.RegressionSeverity
 import ru.yandex.diploma.aiplatform.domain.model.RegressionStatus
 import ru.yandex.diploma.aiplatform.domain.model.RegressionType
+import ru.yandex.diploma.aiplatform.domain.repository.BaselineLoadResult
 import ru.yandex.diploma.aiplatform.infrastructure.repository.FileBaselineRepository
 import java.nio.file.Files
 import kotlin.test.assertEquals
@@ -43,7 +44,8 @@ class StrictQAEndToEndTest {
 
         assertEquals(RegressionStatus.PASS, baselineResult.regressionAnalysis.summary.overallStatus)
         assertTrue(baselineResult.runId.isNotEmpty())
-        assertTrue(fileBaselineRepository.loadAll("qa_comprehensive_test_suite").isNotEmpty())
+        val baselines = fileBaselineRepository.loadAll("qa_comprehensive_test_suite")
+        assertTrue(baselines is BaselineLoadResult.Loaded && baselines.data.isNotEmpty())
 
         val regressionResult = executeRegressionRun(createRegressionScenario(baselineConfig))
 

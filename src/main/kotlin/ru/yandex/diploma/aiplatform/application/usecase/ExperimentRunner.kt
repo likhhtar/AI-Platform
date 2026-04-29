@@ -54,7 +54,8 @@ class ExperimentRunner(
                 runs = listOf(experimentRun),
                 metrics = metrics,
                 executionTimeMs = executionTimeMs,
-                timestamp = Instant.now().toString()
+                timestamp = Instant.now().toString(),
+                configurationSource = configurationSource
             )
             
         } catch (e: Exception) {
@@ -80,7 +81,8 @@ class ExperimentRunner(
                 runs = listOf(failedRun),
                 metrics = metrics,
                 executionTimeMs = executionTimeMs,
-                timestamp = Instant.now().toString()
+                timestamp = Instant.now().toString(),
+                configurationSource = configurationSource
             )
         }
     }
@@ -138,7 +140,8 @@ class ExperimentRunner(
             runs = runs,
             metrics = metrics,
             executionTimeMs = executionTimeMs,
-            timestamp = Instant.now().toString()
+            timestamp = Instant.now().toString(),
+            configurationSource = configurationSource
         )
     }
     
@@ -156,8 +159,13 @@ class ExperimentRunner(
         }
         
         val allResults = successfulRuns.mapNotNull { it.result }
-        val averageLatency = allResults.map { it.executionTimeMs }.average()
-        val averageScore = allResults.flatMap { it.results }.map { it.evaluationResult.score }.average()
+        val averageLatency = allResults.map { it.executionTimeMs }.average().let { avg ->
+            if (avg.isNaN()) 0.0 else avg
+        }
+        val scores = allResults.flatMap { it.results }.map { it.evaluationResult.score }
+        val averageScore = scores.takeUnless { it.isEmpty() }?.average()?.let { avg ->
+            if (avg.isNaN()) 0.0 else avg
+        } ?: 0.0
         
         return ExperimentMetrics(
             totalRuns = runs.size,
@@ -184,7 +192,8 @@ data class ExperimentResult(
     val runs: List<ExperimentRun>,
     val metrics: ExperimentMetrics,
     val executionTimeMs: Long,
-    val timestamp: String
+    val timestamp: String,
+    val configurationSource: String? = null
 )
 
 data class ExperimentMetrics(

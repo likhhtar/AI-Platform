@@ -14,7 +14,9 @@ import java.util.regex.Pattern
 class YamlTestConfigurationRepository : TestConfigurationRepository {
     
     private val yaml = Yaml()
-    private val variablePattern = Pattern.compile("\\{\\{(\\w+)\\}\\}")
+    /** Must match [ru.yandex.diploma.aiplatform.domain.model] placeholder grammar (see PromptTemplateSupport). */
+    private val variablePattern =
+        Pattern.compile("(?<!\\{)\\{\\{(?!\\{)\\s*([A-Za-z0-9_.-]+)\\s*}}(?!\\})")
     
     override suspend fun loadConfiguration(source: String): TestConfiguration {
         try {
@@ -71,7 +73,8 @@ class YamlTestConfigurationRepository : TestConfigurationRepository {
             
             val suiteMetadata = parseSuiteMetadata(data["suite"].asStringKeyedMapOrEmpty())
             val executionConfig = parseExecutionConfig(data["execution"].asStringKeyedMapOrEmpty())
-            val optimizationConfig = parseOptimizationConfig(data["optimizer"].asStringKeyedMapOrEmpty())
+            val optimizationConfig =
+                parseOptimizationConfig(data["optimizer"].asStringKeyedMapOrEmpty(), source = source)
             val regressionConfiguration = parseRegressionConfiguration(data["regression"])
 
             return TestConfiguration(
@@ -84,6 +87,8 @@ class YamlTestConfigurationRepository : TestConfigurationRepository {
                 optimizationConfig = optimizationConfig,
                 regressionConfiguration = regressionConfiguration
             )
+        } catch (e: ConfigurationLoadException) {
+            throw e
         } catch (e: Exception) {
             throw ConfigurationLoadException(
                 message = "Failed to parse configuration: ${e.message}",
@@ -269,28 +274,38 @@ class YamlTestConfigurationRepository : TestConfigurationRepository {
         )
     }
 
-    private fun parseOptimizationConfig(data: Map<String, Any>): OptimizationConfig? {
+    private fun parseOptimizationConfig(data: Map<String, Any>, source: String): OptimizationConfig? {
         if (data.isEmpty()) return null
         
         val enabled = data["enabled"] as? Boolean ?: false
         if (!enabled) return OptimizationConfig(enabled = false)
         
-        val modeStr = data["mode"] as? String ?: "suggest"
-        val mode = try {
-            OptimizationMode.valueOf(modeStr.uppercase())
-        } catch (e: IllegalArgumentException) {
-            OptimizationMode.SUGGEST
-        }
+        val modeStr = data["mode"] as? String
+        val mode =
+            if (modeStr.isNullOrBlank()) {
+                OptimizationMode.SUGGEST
+            } else {
+                parseOptimizerMode(modeStr, source)
+            }
         
-        val typeStr = data["type"] as? String ?: "llm"
-        val type = try {
-            OptimizerType.valueOf(typeStr.uppercase().replace("-", "_"))
-        } catch (e: IllegalArgumentException) {
-            OptimizerType.LLM
-        }
+        val typeStr = data["type"] as? String
+        val type =
+            if (typeStr.isNullOrBlank()) {
+                OptimizerType.LLM
+            } else {
+                parseOptimizerType(typeStr, source)
+            }
         
         val iterations = (data["iterations"] as? Number)?.toInt() ?: 1
-        
+        val plateauScoreEpsilon =
+            (data["plateauScoreEpsilon"] as? Number)?.toDouble()
+                ?: (data["plateau_score_epsilon"] as? Number)?.toDouble()
+                ?: 0.008
+        val rollbackMedianThreshold =
+            (data["rollbackMedianThreshold"] as? Number)?.toDouble()
+                ?: (data["rollback_median_threshold"] as? Number)?.toDouble()
+                ?: 0.015
+
         val llmConfig = if (type == OptimizerType.LLM) {
             parseLlmOptimizerConfig(data["llm"].asStringKeyedMapOrEmpty())
         } else null
@@ -305,7 +320,9 @@ class YamlTestConfigurationRepository : TestConfigurationRepository {
             type = type,
             iterations = iterations,
             llmConfig = llmConfig,
-            ruleBasedConfig = ruleBasedConfig
+            ruleBasedConfig = ruleBasedConfig,
+            plateauScoreEpsilon = plateauScoreEpsilon.coerceAtLeast(0.0),
+            rollbackMedianThreshold = rollbackMedianThreshold.coerceAtLeast(0.0),
         )
     }
     
@@ -339,6 +356,28 @@ class YamlTestConfigurationRepository : TestConfigurationRepository {
         )
     }
     
+    private fun parseOptimizerMode(raw: String, source: String): OptimizationMode {
+        val normalized = raw.trim().uppercase()
+        return OptimizationMode.entries.firstOrNull { it.name == normalized }
+            ?: throw ConfigurationLoadException(
+                message =
+                    "Invalid optimizer.mode='$raw'. " +
+                        "Expected: ${OptimizationMode.entries.joinToString(",") { it.name }} (yaml path: optimizer.mode)",
+                source = source,
+            )
+    }
+
+    private fun parseOptimizerType(raw: String, source: String): OptimizerType {
+        val normalized = raw.trim().uppercase().replace("-", "_")
+        return OptimizerType.entries.firstOrNull { it.name == normalized }
+            ?: throw ConfigurationLoadException(
+                message =
+                    "Invalid optimizer.type='$raw'. " +
+                        "Expected: ${OptimizerType.entries.joinToString(",") { it.name }} (yaml path: optimizer.type)",
+                source = source,
+            )
+    }
+
     private fun isFilePath(source: String): Boolean {
         return !source.contains('\n') && !source.trim().startsWith("{") && !source.trim().startsWith("-")
     }

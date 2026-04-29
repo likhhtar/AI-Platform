@@ -9,6 +9,7 @@ import ru.yandex.diploma.aiplatform.domain.model.*
 import ru.yandex.diploma.aiplatform.domain.service.MultiMetricEvaluationService
 import ru.yandex.diploma.aiplatform.domain.service.RegressionDetectionService
 import ru.yandex.diploma.aiplatform.infrastructure.evaluator.DefaultMetricRegistry
+import ru.yandex.diploma.aiplatform.domain.repository.BaselineLoadResult
 import ru.yandex.diploma.aiplatform.infrastructure.repository.FileBaselineRepository
 import java.nio.file.Files
 import java.time.Instant
@@ -32,9 +33,15 @@ class BaselineRegressionSystemTest {
         )
         repo.saveBaseline(suiteId, tcId, entry)
         assertEquals(entry.response, repo.getBaseline(suiteId, tcId)?.response)
-        assertEquals(1, repo.loadAll(suiteId).size)
+        val afterSave = repo.loadAll(suiteId)
+        assertTrue(afterSave is BaselineLoadResult.Loaded)
+        assertEquals(1, (afterSave as BaselineLoadResult.Loaded).data.size)
         repo.deleteSuite(suiteId)
-        assertTrue(repo.loadAll(suiteId).isEmpty())
+        val afterDelete = repo.loadAll(suiteId)
+        assertTrue(
+            afterDelete is BaselineLoadResult.Missing ||
+                (afterDelete is BaselineLoadResult.Loaded && afterDelete.data.isEmpty()),
+        )
     }
 
     @Test

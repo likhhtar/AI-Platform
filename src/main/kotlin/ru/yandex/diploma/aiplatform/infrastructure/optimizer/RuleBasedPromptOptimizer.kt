@@ -1,323 +1,346 @@
 package ru.yandex.diploma.aiplatform.infrastructure.optimizer
 
+import java.util.regex.Matcher
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import ru.yandex.diploma.aiplatform.domain.model.*
-import ru.yandex.diploma.aiplatform.domain.service.PromptOptimizer
+import ru.yandex.diploma.aiplatform.domain.model.extractTemplateVariables
+import ru.yandex.diploma.aiplatform.domain.model.replaceRegexOutsidePlaceholderSpans
+import ru.yandex.diploma.aiplatform.domain.model.validateTemplatePlaceholderBagPreservation
 import ru.yandex.diploma.aiplatform.domain.service.PromptOptimizationException
+import ru.yandex.diploma.aiplatform.domain.service.PromptOptimizer
 
 @Component
 class RuleBasedPromptOptimizer : PromptOptimizer {
-    
+
     private val logger = LoggerFactory.getLogger(RuleBasedPromptOptimizer::class.java)
-    
+
     override val optimizerType: OptimizerType = OptimizerType.RULE_BASED
-    
+
     override suspend fun optimize(input: OptimizationInput, config: OptimizationConfig): OptimizationResult {
-        val startTime = System.currentTimeMillis()
-        
+        val start = System.currentTimeMillis()
         try {
-            logger.info("Starting rule-based prompt optimization for prompt: ${input.originalPrompt.id}")
-            
-            val ruleConfig = config.ruleBasedConfig ?: RuleBasedOptimizerConfig()
-            val suggestions = mutableListOf<OptimizationSuggestion>()
-            
-            val failedTests = input.testResults.filter { !it.evaluationResult.passed }
-            val lowScoreTests = input.testResults.filter { it.evaluationResult.score < 0.7 }
-            
-            if (ruleConfig.enableLengthOptimization) {
-                suggestions.addAll(analyzeLengthIssues(input.originalPrompt, failedTests))
+            logger.info("Rule-based optimization for prompt `${input.originalPrompt.id}` mode=${config.mode}")
+
+            val rc = config.ruleBasedConfig ?: RuleBasedOptimizerConfig()
+            val failures = input.testResults.count { !it.evaluationResult.passed }
+            val lowScores = input.testResults.count { it.evaluationResult.score < 0.7 }
+
+            val ctx =
+                RuleContext(
+                    original = input.originalPrompt,
+                    failures = failures,
+                    lowScores = lowScores,
+                )
+
+            val staged =
+                mutableListOf<(String, RuleContext, RuleBasedOptimizerConfig) -> Pair<String, String>>()
+            if (rc.enableClarityOptimization) staged.add { t, c, r -> stripVagueLanguage(t, c, r) }
+            if (rc.enableSpecificityOptimization) {
+                staged.add { t, c, r -> injectOutputContract(t, c, r) }
+                staged.add { t, c, r -> injectJsonOnlyIfRequestedOrHeuristic(t, c, r) }
+                staged.add { t, c, r -> addFailureDrivenConstraints(t, c, r) }
             }
-            
-            if (ruleConfig.enableClarityOptimization) {
-                suggestions.addAll(analyzeClarityIssues(input.originalPrompt, failedTests))
+            if (rc.enableLengthOptimization) staged.add { t, c, r -> balanceLength(t, c, r) }
+
+            var working = input.originalPrompt.template
+            val appliedRuleNames = mutableListOf<String>()
+            for (stage in staged) {
+                val (next, label) = stage(working, ctx, rc)
+                if (next != working) {
+                    appliedRuleNames += label
+                    working = next
+                }
             }
-            
-            if (ruleConfig.enableSpecificityOptimization) {
-                suggestions.addAll(analyzeSpecificityIssues(input.originalPrompt, failedTests))
+
+            working = applyConfigurableRegexRules(working, rc.rules, appliedRuleNames)
+
+            try {
+                validateTemplatePlaceholderBagPreservation(input.originalPrompt.template, working)
+            } catch (e: IllegalArgumentException) {
+                throw PromptOptimizationException(
+                    message = e.message ?: "Rule-based optimizer corrupted template placeholders",
+                    cause = e,
+                    optimizerType = optimizerType,
+                )
             }
-            
-            suggestions.addAll(applyCustomRules(input.originalPrompt, ruleConfig.rules))
-            
-            val optimizedPrompt = if (config.mode == OptimizationMode.APPLY) {
-                generateOptimizedPrompt(input.originalPrompt, suggestions)
-            } else null
-            
-            val confidence = calculateConfidence(suggestions, failedTests.size, input.testResults.size)
-            val reasoning = buildReasoning(suggestions, failedTests, lowScoreTests)
-            
-            val executionTime = System.currentTimeMillis() - startTime
-            
-            logger.info("Rule-based optimization completed in ${executionTime}ms with ${suggestions.size} suggestions")
-            
+
+            val suggestions = buildStructuredSuggestions(
+                input = input,
+                ctx = ctx,
+                appliedRuleNames = appliedRuleNames,
+            )
+
+            val vars = extractTemplateVariables(working).ifEmpty { input.originalPrompt.variables }
+            val optimized =
+                if (config.mode == OptimizationMode.APPLY) {
+                    Prompt(
+                        id = input.originalPrompt.id,
+                        name = "${input.originalPrompt.name} (rule-optimized)",
+                        template = working,
+                        variables = vars,
+                    )
+                } else {
+                    null
+                }
+
+            val confidence =
+                computeAggregateConfidence(
+                    appliedRuleNames = appliedRuleNames,
+                    failureRate = failures.toDouble() / input.testResults.size.coerceAtLeast(1),
+                    lowScoreRate = lowScores.toDouble() / input.testResults.size.coerceAtLeast(1),
+                )
+
+            val exec = System.currentTimeMillis() - start
+            val provisionalStatus =
+                when (config.mode) {
+                    OptimizationMode.SUGGEST -> OptimizationStatus.SUGGESTED
+                    OptimizationMode.APPLY ->
+                        if (optimized != null) OptimizationStatus.APPLIED else OptimizationStatus.FAILED
+                }
             return OptimizationResult(
                 originalPrompt = input.originalPrompt,
-                optimizedPrompt = optimizedPrompt,
+                optimizedPrompt = optimized,
                 suggestions = suggestions,
-                confidence = confidence,
-                reasoning = reasoning,
-                metadata = mapOf(
-                    "optimizerType" to "rule-based",
-                    "rulesApplied" to ruleConfig.rules.size,
-                    "failedTestsCount" to failedTests.size,
-                    "lowScoreTestsCount" to lowScoreTests.size,
-                    "mode" to config.mode.name
-                ),
-                executionTimeMs = executionTime
+                confidence = confidence.coerceIn(0.0, 1.0),
+                reasoning =
+                    buildReasoning(
+                        failures = failures,
+                        lowScores = lowScores,
+                        applied = appliedRuleNames,
+                    ),
+                metadata =
+                    mapOf(
+                        "stages" to appliedRuleNames.size,
+                        "stageNames" to appliedRuleNames,
+                        "optimizationStatus" to provisionalStatus.name,
+                    ),
+                executionTimeMs = exec,
+                status = provisionalStatus,
             )
-            
+        } catch (e: PromptOptimizationException) {
+            throw e
         } catch (e: Exception) {
-            val executionTime = System.currentTimeMillis() - startTime
-            logger.error("Rule-based optimization failed", e)
             throw PromptOptimizationException(
-                "Rule-based optimization failed: ${e.message}",
+                message = "Rule-based optimization failed: ${e.message}",
                 cause = e,
-                optimizerType = optimizerType
+                optimizerType = optimizerType,
             )
         }
     }
-    
-    override suspend fun isAvailable(): Boolean = true
-    
-    override fun getConfigurationRequirements(): List<String> {
-        return listOf(
-            "ruleBasedConfig.rules - List of custom optimization rules (optional)",
-            "ruleBasedConfig.enableLengthOptimization - Enable length analysis (optional, default: true)",
-            "ruleBasedConfig.enableClarityOptimization - Enable clarity analysis (optional, default: true)",
-            "ruleBasedConfig.enableSpecificityOptimization - Enable specificity analysis (optional, default: true)"
-        )
-    }
-    
-    private fun analyzeLengthIssues(prompt: Prompt, failedTests: List<TestResult>): List<OptimizationSuggestion> {
-        val suggestions = mutableListOf<OptimizationSuggestion>()
-        
-        val template = prompt.template
-        
-        if (template.length < 50) {
-            suggestions.add(
-                OptimizationSuggestion(
-                    type = SuggestionType.LENGTH,
-                    description = "Prompt appears too short and may lack sufficient context",
-                    originalText = template,
-                    suggestedText = null,
-                    impact = SuggestionImpact.MEDIUM,
-                    confidence = 0.7,
-                    reasoning = "Short prompts (< 50 characters) often lack necessary context for clear instructions"
+
+    private data class RuleContext(
+        val original: Prompt,
+        val failures: Int,
+        val lowScores: Int,
+    )
+
+    private fun stripVagueLanguage(
+        tpl: String,
+        @Suppress("UNUSED_PARAMETER") ctx: RuleContext,
+        @Suppress("UNUSED_PARAMETER") rc: RuleBasedOptimizerConfig,
+    ): Pair<String, String> =
+        stripVagueLanguageInPlainTextSegments(tpl) to "stripVagueLanguageOutsideCodeFences"
+
+    private fun stripVagueLanguageInPlainTextSegments(tpl: String): String =
+        transformOutsideTripleBacktickRegions(tpl) { segment ->
+            var next = segment
+            val pairs =
+                listOf(
+                    Regex("""\b(something|somewhat|maybe|perhaps|kind of|sort of)\b""", RegexOption.IGNORE_CASE) to "",
+                    Regex("""(что-то|как-то|возможно|наверное|вроде бы)""") to "",
                 )
-            )
+            for ((re, replacement) in pairs) {
+                next = re.replace(next, Matcher.quoteReplacement(replacement))
+            }
+            next
         }
-        
-        if (template.length > 1000) {
-            suggestions.add(
-                OptimizationSuggestion(
-                    type = SuggestionType.LENGTH,
-                    description = "Prompt appears too long and may be overwhelming",
-                    originalText = template,
-                    suggestedText = null,
-                    impact = SuggestionImpact.MEDIUM,
-                    confidence = 0.6,
-                    reasoning = "Very long prompts (> 1000 characters) can be difficult to follow and may confuse the model"
-                )
-            )
+
+    /**
+     * Runs [transform] only on regions outside balanced ``` fenced blocks so examples stay intact.
+     */
+    private fun transformOutsideTripleBacktickRegions(template: String, transform: (String) -> String): String {
+        if (!template.contains("```")) return transform(template)
+        val out = StringBuilder()
+        var i = 0
+        while (i <= template.lastIndex) {
+            val fenceStart = template.indexOf("```", i)
+            if (fenceStart < 0) {
+                out.append(transform(template.substring(i)))
+                break
+            }
+            out.append(transform(template.substring(i, fenceStart)))
+            val fenceEnd = template.indexOf("```", fenceStart + 3)
+            if (fenceEnd < 0) {
+                out.append(template.substring(fenceStart))
+                break
+            }
+            out.append(template.substring(fenceStart, fenceEnd + 3))
+            i = fenceEnd + 3
         }
-        
-        return suggestions
+        return out.toString()
     }
-    
-    private fun analyzeClarityIssues(prompt: Prompt, failedTests: List<TestResult>): List<OptimizationSuggestion> {
-        val suggestions = mutableListOf<OptimizationSuggestion>()
-        val template = prompt.template.lowercase()
-        
-        val vagueWords = listOf("что-то", "как-то", "возможно", "может быть", "наверное", "вроде")
-        vagueWords.forEach { word ->
-            if (template.contains(word)) {
-                suggestions.add(
-                    OptimizationSuggestion(
-                        type = SuggestionType.CLARITY,
-                        description = "Remove vague language: '$word'",
-                        originalText = word,
-                        suggestedText = null,
-                        impact = SuggestionImpact.MEDIUM,
-                        confidence = 0.8,
-                        reasoning = "Vague words can make instructions unclear and lead to inconsistent responses"
-                    )
-                )
+
+    /** Adds an explicit output scaffold so models stop rambling. */
+    private fun injectOutputContract(
+        tpl: String,
+        ctx: RuleContext,
+        @Suppress("UNUSED_PARAMETER") rc: RuleBasedOptimizerConfig,
+    ): Pair<String, String> {
+        if (Regex("""(?i)output format""").containsMatchIn(tpl)) return tpl to "skipOutputContract"
+        val block =
+            buildString {
+                appendLine()
+                appendLine("### Output contract")
+                appendLine("- Answer the user request first.")
+                appendLine("- Keep the answer concise unless more detail is explicitly required.")
+                if (ctx.failures > 0) {
+                    appendLine("- Prefer correctness over creativity when requirements look test-like.")
+                }
+            }
+        return (tpl.trimEnd() + "\n" + block.trim()) to "injectOutputContract"
+    }
+
+    /** If user/test signals JSON or deterministic structure, push stricter machine-readable output. */
+    private fun injectJsonOnlyIfRequestedOrHeuristic(
+        tpl: String,
+        ctx: RuleContext,
+        @Suppress("UNUSED_PARAMETER") rc: RuleBasedOptimizerConfig,
+    ): Pair<String, String> {
+        val jsonHint = Regex("""(?i)(json|schema|array|object)\b""").containsMatchIn(tpl + ctx.original.name)
+        val testJson = ctx.failures > 0 && Regex("""[{}"]""").containsMatchIn(tpl)
+        if (!jsonHint && !testJson) return tpl to "skipJsonOnly"
+        if (Regex("""(?i)(only json|строго json)""").containsMatchIn(tpl)) return tpl to "alreadyJsonOnly"
+        val block =
+            """
+            |### Structured output
+            |If the answer must be machine-readable, respond with VALID JSON ONLY — no markdown fences, no commentary before/after.
+            """.trimMargin()
+        return (tpl.trimEnd() + "\n" + block) to "injectStructuredJsonRule"
+    }
+
+    /** Add explicit “do not” lines when many tests fail. */
+    private fun addFailureDrivenConstraints(
+        tpl: String,
+        ctx: RuleContext,
+        @Suppress("UNUSED_PARAMETER") rc: RuleBasedOptimizerConfig,
+    ): Pair<String, String> {
+        if (ctx.failures <= 1 && ctx.lowScores <= 1) return tpl to "skipHardConstraints"
+        if (Regex("""(?i)(do not|don't|не\s)""").containsMatchIn(tpl)) return tpl to "alreadyHasNegatives"
+        val block =
+            """
+            |### Constraints
+            |- Do not contradict earlier instructions.
+            |- If unsure, state assumptions explicitly in one short sentence.
+            """.trimMargin()
+        return (tpl.trimEnd() + "\n" + block) to "failureDrivenConstraints"
+    }
+
+    /** Encourage splitting very long templates into sections. */
+    private fun balanceLength(
+        tpl: String,
+        @Suppress("UNUSED_PARAMETER") ctx: RuleContext,
+        @Suppress("UNUSED_PARAMETER") rc: RuleBasedOptimizerConfig,
+    ): Pair<String, String> {
+        if (tpl.length < 1200) return tpl to "skipBalanceLength"
+        if (tpl.contains("```")) return tpl to "skipBalanceLengthCodeFences"
+        val lines = tpl.lines()
+        val withHeadings =
+            buildString {
+                appendLine("### Primary instructions")
+                lines.take(40).joinTo(this, separator = "\n")
+                appendLine()
+                appendLine("### Additional context")
+                lines.drop(40).joinTo(this, separator = "\n")
+            }
+        return withHeadings to "sectionRewriteLongPrompt"
+    }
+
+    private fun applyConfigurableRegexRules(
+        template: String,
+        rules: List<OptimizationRule>,
+        audit: MutableList<String>,
+    ): String =
+        rules.filter { it.enabled }.fold(template) { acc, rule ->
+            if (rule.pattern.isBlank()) {
+                logger.warn("Skip regex rule with empty pattern name={}", rule.name)
+                return@fold acc
+            }
+            try {
+                val pattern = Regex(rule.pattern, RegexOption.IGNORE_CASE)
+                val safeReplacement = Matcher.quoteReplacement(rule.replacement)
+                val next = replaceRegexOutsidePlaceholderSpans(acc, pattern, safeReplacement)
+                if (next != acc) {
+                    audit += "regex:${rule.name}"
+                    logger.info("Regex rule '{}' applied (pattern chars={})", rule.name, rule.pattern.length)
+                }
+                next
+            } catch (ex: Exception) {
+                logger.warn("Skip invalid regex rule {}", rule.name, ex)
+                acc
             }
         }
-        
-        if (!template.endsWith(".") && !template.endsWith("!") && !template.endsWith("?") && !template.endsWith(":")) {
-            suggestions.add(
-                OptimizationSuggestion(
-                    type = SuggestionType.CLARITY,
-                    description = "Add proper punctuation at the end of the prompt",
-                    originalText = null,
-                    suggestedText = null,
-                    impact = SuggestionImpact.LOW,
-                    confidence = 0.6,
-                    reasoning = "Proper punctuation helps clarify the end of instructions"
-                )
+
+    private fun buildStructuredSuggestions(
+        input: OptimizationInput,
+        ctx: RuleContext,
+        appliedRuleNames: List<String>,
+    ): List<OptimizationSuggestion> {
+        val hints = mutableListOf<OptimizationSuggestion>()
+        hints +=
+            OptimizationSuggestion(
+                type = SuggestionType.STRUCTURE,
+                description =
+                    "${appliedRuleNames.size} deterministic transforms applied (${appliedRuleNames.take(8).joinToString()})",
+                originalText = null,
+                suggestedText = null,
+                impact = if (appliedRuleNames.isEmpty()) SuggestionImpact.LOW else SuggestionImpact.MEDIUM,
+                confidence = if (appliedRuleNames.isEmpty()) 0.45 else 0.78,
+                reasoning = "Rule pipeline executed on `${input.originalPrompt.id}`",
             )
-        }
-        
-        return suggestions
-    }
-    
-    private fun analyzeSpecificityIssues(prompt: Prompt, failedTests: List<TestResult>): List<OptimizationSuggestion> {
-        val suggestions = mutableListOf<OptimizationSuggestion>()
-        val template = prompt.template.lowercase()
-        
-        if (!template.contains("пример") && !template.contains("например") && failedTests.isNotEmpty()) {
-            suggestions.add(
+
+        if (ctx.failures > 0) {
+            hints +=
                 OptimizationSuggestion(
-                    type = SuggestionType.EXAMPLES,
-                    description = "Consider adding examples to clarify expected output format",
+                    type = SuggestionType.CONSTRAINTS,
+                    description = "${ctx.failures} failing evaluations — tighten instructions & output contract",
                     originalText = null,
                     suggestedText = null,
                     impact = SuggestionImpact.HIGH,
-                    confidence = 0.7,
-                    reasoning = "Examples help models understand the expected output format and style"
+                    confidence = 0.74,
+                    reasoning = "Failure signal from benchmark harness",
                 )
-            )
         }
-        
-        if (!template.contains("формат") && !template.contains("ответ") && !template.contains("результат")) {
-            suggestions.add(
-                OptimizationSuggestion(
-                    type = SuggestionType.FORMAT,
-                    description = "Specify the expected output format",
-                    originalText = null,
-                    suggestedText = null,
-                    impact = SuggestionImpact.MEDIUM,
-                    confidence = 0.6,
-                    reasoning = "Clear output format specifications help ensure consistent responses"
-                )
-            )
-        }
-        
-        if (failedTests.size > 1 && !template.contains("только") && !template.contains("не") && !template.contains("избегай")) {
-            suggestions.add(
-                OptimizationSuggestion(
-                    type = SuggestionType.CONSTRAINTS,
-                    description = "Consider adding constraints to prevent unwanted behaviors",
-                    originalText = null,
-                    suggestedText = null,
-                    impact = SuggestionImpact.MEDIUM,
-                    confidence = 0.5,
-                    reasoning = "Constraints help prevent the model from producing unwanted outputs"
-                )
-            )
-        }
-        
-        return suggestions
+        return hints
     }
-    
-    private fun applyCustomRules(prompt: Prompt, rules: List<OptimizationRule>): List<OptimizationSuggestion> {
-        val suggestions = mutableListOf<OptimizationSuggestion>()
-        
-        rules.filter { it.enabled }.forEach { rule ->
-            try {
-                val regex = Regex(rule.pattern, RegexOption.IGNORE_CASE)
-                if (regex.containsMatchIn(prompt.template)) {
-                    suggestions.add(
-                        OptimizationSuggestion(
-                            type = SuggestionType.OTHER,
-                            description = rule.description,
-                            originalText = rule.pattern,
-                            suggestedText = rule.replacement,
-                            impact = SuggestionImpact.MEDIUM,
-                            confidence = 0.8,
-                            reasoning = "Custom rule: ${rule.name}"
-                        )
-                    )
-                }
-            } catch (e: Exception) {
-                logger.warn("Failed to apply custom rule: ${rule.name}", e)
-            }
-        }
-        
-        return suggestions
-    }
-    
-    private fun generateOptimizedPrompt(originalPrompt: Prompt, suggestions: List<OptimizationSuggestion>): Prompt {
-        var optimizedTemplate = originalPrompt.template
-        
-        suggestions
-            .filter { it.impact == SuggestionImpact.HIGH || it.impact == SuggestionImpact.CRITICAL }
-            .filter { it.originalText != null && it.suggestedText != null }
-            .forEach { suggestion ->
-                optimizedTemplate = optimizedTemplate.replace(
-                    suggestion.originalText!!,
-                    suggestion.suggestedText!!,
-                    ignoreCase = true
-                )
-            }
-        
-        if (suggestions.any { it.type == SuggestionType.EXAMPLES }) {
-            optimizedTemplate += "\n\nПример: [добавьте соответствующий пример]"
-        }
-        
-        if (suggestions.any { it.type == SuggestionType.FORMAT }) {
-            optimizedTemplate += "\n\nФормат ответа: [укажите желаемый формат]"
-        }
-        
-        return Prompt(
-            id = "${originalPrompt.id}_optimized",
-            name = "${originalPrompt.name} (Optimized)",
-            template = optimizedTemplate,
-            variables = extractVariablesFromTemplate(optimizedTemplate)
-        )
-    }
-    
-    private fun extractVariablesFromTemplate(template: String): Set<String> {
-        val variables = mutableSetOf<String>()
-        val pattern = Regex("\\{\\{(\\w+)\\}\\}")
-        pattern.findAll(template).forEach { match ->
-            variables.add(match.groupValues[1])
-        }
-        return variables
-    }
-    
-    private fun calculateConfidence(
-        suggestions: List<OptimizationSuggestion>,
-        failedTestsCount: Int,
-        totalTestsCount: Int
+
+    private fun computeAggregateConfidence(
+        appliedRuleNames: List<String>,
+        failureRate: Double,
+        lowScoreRate: Double,
     ): Double {
-        if (suggestions.isEmpty()) return 0.3
-        
-        val avgSuggestionConfidence = suggestions.map { it.confidence }.average()
-        val failureRate = failedTestsCount.toDouble() / totalTestsCount
-        
-        val impactBonus = suggestions.count { it.impact == SuggestionImpact.HIGH || it.impact == SuggestionImpact.CRITICAL } * 0.1
-        val failureBonus = failureRate * 0.2
-        
-        return (avgSuggestionConfidence + impactBonus + failureBonus).coerceIn(0.0, 1.0)
+        val base = 0.45 + appliedRuleNames.size * 0.05 + failureRate * 0.2 + lowScoreRate * 0.1
+        return base.coerceIn(0.3, 0.93)
     }
-    
+
     private fun buildReasoning(
-        suggestions: List<OptimizationSuggestion>,
-        failedTests: List<TestResult>,
-        lowScoreTests: List<TestResult>
-    ): String {
-        return buildString {
-            appendLine("Rule-based analysis identified ${suggestions.size} optimization opportunities:")
-            
-            if (failedTests.isNotEmpty()) {
-                appendLine("- ${failedTests.size} failed tests indicate potential issues with prompt clarity or specificity")
-            }
-            
-            if (lowScoreTests.isNotEmpty()) {
-                appendLine("- ${lowScoreTests.size} low-scoring tests suggest room for improvement")
-            }
-            
-            val highImpactSuggestions = suggestions.filter { it.impact == SuggestionImpact.HIGH || it.impact == SuggestionImpact.CRITICAL }
-            if (highImpactSuggestions.isNotEmpty()) {
-                appendLine("- ${highImpactSuggestions.size} high-impact suggestions identified")
-            }
-            
-            val suggestionsByType = suggestions.groupBy { it.type }
-            suggestionsByType.forEach { (type, typeSuggestions) ->
-                appendLine("- ${typeSuggestions.size} ${type.name.lowercase()} improvements suggested")
-            }
-        }
-    }
+        failures: Int,
+        lowScores: Int,
+        applied: List<String>,
+    ): String =
+        buildString {
+            appendLine(
+                """Rule optimizer applied deterministic transforms before optional regex substitutions.""",
+            )
+            appendLine("- failures watched: $failures; low-score: $lowScores")
+            appendLine("- transforms: ${applied.joinToString(limit = 20)}")
+        }.trim()
+
+    override suspend fun isAvailable(): Boolean = true
+
+    override fun getConfigurationRequirements(): List<String> =
+        listOf(
+            "Optional ruleBasedConfig with enable* toggles",
+            "Optional regex OptimizationRule replacements",
+        )
 }
