@@ -3,6 +3,7 @@ package ru.yandex.diploma.aiplatform.application.usecase
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import ru.yandex.diploma.aiplatform.domain.model.*
+import ru.yandex.diploma.aiplatform.domain.repository.BaselineLoadResult
 import ru.yandex.diploma.aiplatform.domain.repository.BaselineRepository
 import ru.yandex.diploma.aiplatform.domain.repository.TestConfiguration
 import ru.yandex.diploma.aiplatform.domain.repository.TestConfigurationRepository
@@ -68,7 +69,20 @@ class BaselineExperimentRunner(
             }
         }
 
-        val storedByTestCaseId = baselineRepository.loadAll(suiteId)
+        val storedByTestCaseId =
+            when (val load = baselineRepository.loadAll(suiteId)) {
+                is BaselineLoadResult.Loaded -> load.data
+                is BaselineLoadResult.Missing -> emptyMap()
+                is BaselineLoadResult.Corrupted -> {
+                    logger.warn(
+                        "baseline_store_invalid suiteId={} path={} error={}",
+                        suiteId,
+                        load.path,
+                        load.error,
+                    )
+                    emptyMap()
+                }
+            }
 
         val regressionAnalysis = regressionDetectionService.analyzePersistedBaselines(
             currentRun = testRunRecord,

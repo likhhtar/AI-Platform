@@ -28,7 +28,8 @@ interface PromptOptimizationService {
     
     suspend fun optimizeFromExperimentResult(
         experimentResult: ExperimentResult,
-        optimizationConfig: OptimizationConfig
+        optimizationConfig: OptimizationConfig,
+        configurationSource: String? = null,
     ): OptimizationExperimentResult
 }
 

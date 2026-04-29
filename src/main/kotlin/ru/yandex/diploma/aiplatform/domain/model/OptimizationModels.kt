@@ -9,10 +9,14 @@ data class OptimizationConfig(
     val type: OptimizerType = OptimizerType.LLM,
     val iterations: Int = 1,
     val llmConfig: LlmOptimizerConfig? = null,
-    val ruleBasedConfig: RuleBasedOptimizerConfig? = null
+    val ruleBasedConfig: RuleBasedOptimizerConfig? = null,
+    val plateauScoreEpsilon: Double = 0.008,
+    val rollbackMedianThreshold: Double = 0.015,
 ) {
     init {
         require(iterations > 0) { "Iterations must be positive" }
+        require(plateauScoreEpsilon >= 0.0) { "plateauScoreEpsilon must be non-negative" }
+        require(rollbackMedianThreshold >= 0.0) { "rollbackMedianThreshold must be non-negative" }
         if (enabled && type == OptimizerType.LLM) {
             requireNotNull(llmConfig) { "LLM config is required when using LLM optimizer" }
         }
@@ -52,6 +56,29 @@ enum class OptimizerType {
     RULE_BASED
 }
 
+enum class OptimizationStatus {
+    SUGGESTED,
+
+    APPLIED,
+
+    ROLLED_BACK,
+
+    FAILED,
+}
+
+/** Single structured line for optimization observability (values safe for log appenders). */
+data class OptimizationAuditEvent(
+    val iteration: Int?,
+    val optimizerType: OptimizerType,
+    val status: OptimizationStatus,
+    val scoreDelta: Double?,
+    val medianDelta: Double?,
+    val passRateDelta: Double?,
+    val cycleDetected: Boolean,
+    val plateauDetected: Boolean,
+    val rollbackReason: String?,
+)
+
 data class OptimizationInput(
     val originalPrompt: Prompt,
     val testCases: List<TestCase>,
@@ -72,7 +99,8 @@ data class OptimizationResult(
     val reasoning: String,
     val metadata: Map<String, Any> = emptyMap(),
     val executionTimeMs: Long,
-    val timestamp: String = Instant.now().toString()
+    val timestamp: String = Instant.now().toString(),
+    val status: OptimizationStatus = OptimizationStatus.SUGGESTED,
 ) {
     init {
         require(confidence >= 0.0 && confidence <= 1.0) { "Confidence must be between 0.0 and 1.0" }
@@ -113,6 +141,39 @@ enum class SuggestionImpact {
     CRITICAL
 }
 
+data class OptimizationImprovement(
+    val scoreImprovement: Double,
+    val latencyChange: Double,
+    val passRateImprovement: Double,
+    val significantImprovement: Boolean,
+    val detailedMetrics: Map<String, Double> = emptyMap(),
+    val medianScoreImprovement: Double = 0.0,
+    val perTestScoreDelta: Map<String, Double> = emptyMap(),
+    val regressionDetected: Boolean = false,
+    val rolledBack: Boolean = false,
+    val rollbackReason: String? = null,
+)
+
+fun deriveOptimizationStatus(
+    mode: OptimizationMode,
+    optimizedPrompt: Prompt?,
+    improvement: OptimizationImprovement?,
+    harnessEvaluationFailed: Boolean,
+): OptimizationStatus {
+    if (mode == OptimizationMode.SUGGEST) return OptimizationStatus.SUGGESTED
+    if (harnessEvaluationFailed) return OptimizationStatus.FAILED
+    if (improvement == null) return OptimizationStatus.FAILED
+    if (improvement.rolledBack) return OptimizationStatus.ROLLED_BACK
+    return if (optimizedPrompt != null) OptimizationStatus.APPLIED else OptimizationStatus.FAILED
+}
+
+data class OptimizationIterationSummary(
+    val round: Int,
+    val improvement: OptimizationImprovement?,
+    val haltedDueToPlateau: Boolean = false,
+    val haltedDueToCycle: Boolean = false,
+)
+
 data class OptimizationExperimentResult(
     val baselineResult: ExperimentResult,
     val optimizationResult: OptimizationResult,
@@ -120,13 +181,6 @@ data class OptimizationExperimentResult(
     val improvement: OptimizationImprovement?,
     val config: OptimizationConfig,
     val executionTimeMs: Long,
-    val timestamp: String = Instant.now().toString()
-)
-
-data class OptimizationImprovement(
-    val scoreImprovement: Double,
-    val latencyChange: Double,
-    val passRateImprovement: Double,
-    val significantImprovement: Boolean,
-    val detailedMetrics: Map<String, Double> = emptyMap()
+    val timestamp: String = Instant.now().toString(),
+    val iterationSummaries: List<OptimizationIterationSummary> = emptyList(),
 )

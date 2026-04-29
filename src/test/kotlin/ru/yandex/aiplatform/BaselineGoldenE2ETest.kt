@@ -34,6 +34,7 @@ import ru.yandex.diploma.aiplatform.infrastructure.evaluator.ContainsEvaluator
 import ru.yandex.diploma.aiplatform.infrastructure.evaluator.ExactMatchEvaluator
 import ru.yandex.diploma.aiplatform.infrastructure.llm.DefaultProviderRegistry
 import ru.yandex.diploma.aiplatform.infrastructure.llm.DeterministicLlmProvider
+import ru.yandex.diploma.aiplatform.domain.repository.BaselineLoadResult
 import ru.yandex.diploma.aiplatform.infrastructure.repository.FileBaselineRepository
 import ru.yandex.diploma.aiplatform.infrastructure.service.DefaultProviderValidationService
 import ru.yandex.diploma.aiplatform.infrastructure.service.QAVerificationHtmlReportGenerator
@@ -145,7 +146,9 @@ class BaselineGoldenE2ETest {
             regressionConfig = recordConfig
         )
 
-        val storedAfterRecord = baselineRepository.loadAll(suiteId)
+        val storedAfterRecordRaw = baselineRepository.loadAll(suiteId)
+        assertTrue(storedAfterRecordRaw is BaselineLoadResult.Loaded, "RECORD should persist baselines")
+        val storedAfterRecord = (storedAfterRecordRaw as BaselineLoadResult.Loaded).data
         assertEquals(1, storedAfterRecord.size, "RECORD should persist exactly one baseline entry")
         val (testCaseId, entry) = storedAfterRecord.entries.single()
         assertEquals(0.0, entry.metrics["correctness"]!!, 0.0001)
@@ -225,9 +228,11 @@ class BaselineGoldenE2ETest {
             error.message.orEmpty().contains("infrastructure", ignoreCase = true),
             "Message should mention infrastructure errors: ${error.message}"
         )
+        val emptyCheck = baselineRepository.loadAll(suiteId)
         assertTrue(
-            baselineRepository.loadAll(suiteId).isEmpty(),
-            "No baseline files should be written when RECORD is blocked"
+            emptyCheck is BaselineLoadResult.Missing ||
+                (emptyCheck is BaselineLoadResult.Loaded && emptyCheck.data.isEmpty()),
+            "No baseline files should be written when RECORD is blocked",
         )
     }
 

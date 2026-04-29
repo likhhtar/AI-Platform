@@ -7,5 +7,5 @@ interface BaselineRepository {
 
     suspend fun getBaseline(suiteId: String, testCaseId: String): BaselineEntry?
 
-    suspend fun loadAll(suiteId: String): Map<String, BaselineEntry>
+    suspend fun loadAll(suiteId: String): BaselineLoadResult
 }

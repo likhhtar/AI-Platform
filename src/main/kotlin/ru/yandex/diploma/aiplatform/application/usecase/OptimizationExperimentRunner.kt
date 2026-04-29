@@ -33,7 +33,8 @@ class OptimizationExperimentRunner(
                     optimizedExperimentResult = null,
                     improvement = null,
                     config = optimizationConfig ?: OptimizationConfig(enabled = false),
-                    executionTimeMs = System.currentTimeMillis() - startTime
+                    executionTimeMs = System.currentTimeMillis() - startTime,
+                    iterationSummaries = emptyList(),
                 )
             }
             
@@ -60,7 +61,8 @@ class OptimizationExperimentRunner(
                     optimizedExperimentResult = null,
                     improvement = null,
                     config = optimizationConfig ?: OptimizationConfig(enabled = false),
-                    executionTimeMs = System.currentTimeMillis() - startTime
+                    executionTimeMs = System.currentTimeMillis() - startTime,
+                    iterationSummaries = emptyList(),
                 )
             } catch (fallbackException: Exception) {
                 logger.error("Fallback experiment also failed", fallbackException)
@@ -75,40 +77,17 @@ class OptimizationExperimentRunner(
     suspend fun runIterativeOptimization(
         configurationSource: String,
         agentConfig: AgentConfig,
-        optimizationConfig: OptimizationConfig
-    ): List<OptimizationExperimentResult> {
-        val results = mutableListOf<OptimizationExperimentResult>()
-        var currentConfigSource = configurationSource
-        var currentAgentConfig = agentConfig
-        
-        logger.info("Starting iterative optimization with ${optimizationConfig.iterations} iterations")
-        
-        for (iteration in 1..optimizationConfig.iterations) {
-            logger.info("Running optimization iteration $iteration/${optimizationConfig.iterations}")
-            
-            try {
-                val result = runExperimentWithOptimization(
-                    currentConfigSource,
-                    currentAgentConfig,
-                    optimizationConfig
-                )
-                
-                results.add(result)
-                
-                if (result.optimizedExperimentResult != null && 
-                    result.improvement?.significantImprovement == true) {
-                    
-                    logger.info("Iteration $iteration showed significant improvement, using optimized prompt for next iteration")
-                }
-                
-            } catch (e: Exception) {
-                logger.error("Optimization iteration $iteration failed", e)
-                break
-            }
-        }
-        
-        logger.info("Iterative optimization completed with ${results.size} successful iterations")
-        return results
+        optimizationConfig: OptimizationConfig,
+    ): OptimizationExperimentResult {
+        logger.info(
+            "Running iterative optimization ({} iteration cap, plateau-aware)",
+            optimizationConfig.iterations,
+        )
+        return promptOptimizationService.runOptimizationExperiment(
+            configurationSource,
+            agentConfig,
+            optimizationConfig,
+        )
     }
     
     suspend fun compareOptimizationStrategies(
@@ -144,7 +123,9 @@ class OptimizationExperimentRunner(
             suggestions = emptyList(),
             confidence = 0.0,
             reasoning = "Optimization was not enabled",
-            executionTimeMs = 0
+            metadata = mapOf("optimizationStatus" to OptimizationStatus.SUGGESTED.name),
+            executionTimeMs = 0,
+            status = OptimizationStatus.SUGGESTED,
         )
     }
     
@@ -165,7 +146,9 @@ class OptimizationExperimentRunner(
             ),
             confidence = 0.0,
             reasoning = "Optimization failed: ${error.message}",
-            executionTimeMs = 0
+            metadata = mapOf("optimizationStatus" to OptimizationStatus.FAILED.name),
+            executionTimeMs = 0,
+            status = OptimizationStatus.FAILED,
         )
     }
 }
