@@ -94,6 +94,41 @@ class OptimizationHtmlReportGenerator : ReportGenerator {
             background: linear-gradient(90deg, #dc3545 0%, #ffc107 50%, #28a745 100%);
             transition: width 0.3s ease;
         }
+        .iteration-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+            font-size: 0.95em;
+        }
+        .iteration-table th, .iteration-table td {
+            border: 1px solid #dee2e6;
+            padding: 10px 12px;
+            text-align: left;
+            vertical-align: top;
+        }
+        .iteration-table th {
+            background: #f1f3f5;
+            font-weight: 600;
+        }
+        .iteration-table tbody tr:nth-child(even) {
+            background: #fafbfc;
+        }
+        .iteration-table .prompt-full {
+            max-width: 560px;
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 0.85em;
+        }
+        .iteration-table .prompt-full pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+            max-height: 360px;
+            overflow: auto;
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 8px 10px;
+        }
     </style>
 </head>
 <body>
@@ -106,6 +141,8 @@ class OptimizationHtmlReportGenerator : ReportGenerator {
         ${buildOptimizationSummary(optimizationResult)}
         
         ${buildPromptComparison(optimizationResult)}
+        
+        ${buildOptimizationIterationStepsTable(optimizationResult)}
         
         ${buildOptimizationSuggestions(optimizationResult.optimizationResult)}
         
@@ -221,6 +258,56 @@ class OptimizationHtmlReportGenerator : ReportGenerator {
         </section>
         """
     }
+
+    private fun buildOptimizationIterationStepsTable(result: OptimizationExperimentResult): String {
+        val rows = result.iterationReportRows
+        if (rows.isEmpty()) {
+            return ""
+        }
+        val body =
+            rows.joinToString("") { row ->
+                val promptCell =
+                    if (row.proposedPromptTemplate == "—") {
+                        "—"
+                    } else {
+                        "<pre>${escapeHtml(row.proposedPromptTemplate)}</pre>"
+                    }
+                """
+                <tr>
+                    <td>${row.iteration}</td>
+                    <td class="prompt-full">$promptCell</td>
+                    <td>${formatOptimizationScoreCell(row.scoreBefore)}</td>
+                    <td>${formatOptimizationScoreCell(row.scoreAfter)}</td>
+                    <td>${if (row.rolledBack) "Да" else "Нет"}</td>
+                    <td>${if (row.rollbackReason != null) escapeHtml(row.rollbackReason) else "—"}</td>
+                </tr>
+                """.trimIndent()
+            }
+        return """
+        <section class="section">
+            <h2>📑 Шаги оптимизации по итерациям</h2>
+            <p class="text-muted">Для каждой итерации: полный шаблон предложенного промпта, средний score до и после прогона кандидата в harness, факт отката.</p>
+            <table class="iteration-table">
+                <thead>
+                    <tr>
+                        <th>№</th>
+                        <th>Предложенный промпт</th>
+                        <th>Score до</th>
+                        <th>Score после</th>
+                        <th>Откат</th>
+                        <th>Причина отката</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    $body
+                </tbody>
+            </table>
+        </section>
+        """.trimIndent()
+    }
+
+    private fun formatOptimizationScoreCell(value: Double?): String =
+        value?.let { "%.4f".format(it) } ?: "—"
     
     private fun buildOptimizationSuggestions(optimizationResult: OptimizationResult): String {
         return """
@@ -318,15 +405,26 @@ class OptimizationHtmlReportGenerator : ReportGenerator {
     }
     
     private fun buildExperimentResultContent(result: ExperimentResult): String {
+        val totalTests =
+            result.runs.sumOf { run -> run.result?.results?.size ?: 0 }
+        val passedTests =
+            result.runs.sumOf { run -> run.result?.results?.count { it.success } ?: 0 }
+        val hasSuiteBreakdown = totalTests > 0
+        val totalDisplay = if (hasSuiteBreakdown) totalTests else result.runs.size
+        val passedDisplay = if (hasSuiteBreakdown) passedTests else result.runs.count { it.success }
+        val totalLabel =
+            if (hasSuiteBreakdown) "Тест-кейсов" else "Запусков эксперимента"
+        val passedLabel =
+            if (hasSuiteBreakdown) "Пройдено" else "Успешных запусков"
         return """
         <div class="metrics-grid">
             <div class="metric-card">
-                <div class="metric-value">${result.runs.size}</div>
-                <div class="metric-label">Всего запусков</div>
+                <div class="metric-value">$totalDisplay</div>
+                <div class="metric-label">$totalLabel</div>
             </div>
             <div class="metric-card">
-                <div class="metric-value">${result.runs.count { it.success }}</div>
-                <div class="metric-label">Успешных</div>
+                <div class="metric-value">$passedDisplay</div>
+                <div class="metric-label">$passedLabel</div>
             </div>
             <div class="metric-card">
                 <div class="metric-value">${result.metrics.averageScore}</div>

@@ -1,5 +1,6 @@
 package ru.yandex.aiplatform
 
+import io.mockk.mockk
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Assertions.*
@@ -65,10 +66,12 @@ class StrictEndToEndFailureDetectionTest {
         
         baselineExperimentRunner = BaselineExperimentRunner(
             runTestSuiteUseCase = runTestSuiteUseCase,
+            optimizationExperimentRunner = mockk(relaxed = true),
             configurationRepository = configurationRepository,
             baselineRepository = baselineRepository,
             regressionDetectionService = regressionDetectionService,
-            providerValidationService = providerValidationService
+            providerValidationService = providerValidationService,
+            optimizationHtmlReportGenerator = OptimizationHtmlReportGenerator(),
         )
     }
     
@@ -167,9 +170,7 @@ class StrictEndToEndFailureDetectionTest {
             regressionConfig = assertCfg
         )
 
-        runBlocking {
-            validateEvaluationConsistency(currentResult.testRun, "VALID")
-        }
+        validateEvaluationConsistency(currentResult.testRun, "VALID")
         validateDataIntegrityAcrossConversions(currentResult, baselineResult)
         validateRegressionCorrectness(currentResult.regressionAnalysis)
         validateMetricsIndependence(currentResult.testRun)
@@ -231,7 +232,7 @@ class StrictEndToEndFailureDetectionTest {
         )
     }
     
-    private fun validateMetricsIndependence(testRun: TestRunRecord) {
+    private suspend fun validateMetricsIndependence(testRun: TestRunRecord) {
         testRun.results.forEachIndexed { index, result ->
             assertTrue(result.metrics.isNotEmpty(),
                 "TestResult[$index] must have metrics")

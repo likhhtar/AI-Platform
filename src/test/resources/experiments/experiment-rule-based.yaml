@@ -1,0 +1,203 @@
+suite:
+  id: "exp-rule-based"
+  name: "Эксперимент: rule-based оптимизация"
+
+agents:
+  - name: "ad-agent"
+    provider: "openrouter"
+    model: "meta-llama/llama-3.2-3b-instruct:free"
+    system_prompt: "Ты опытный копирайтер для рекламных объявлений Яндекс Директ."
+    temperature: 0.0
+    maxTokens: 300
+
+prompts:
+  - id: "ad-prompt"
+    name: "Начальный промпт"
+    template: "Напиши рекламу для: {{product}}"
+
+test_cases:
+  - promptId: "ad-prompt"
+    agent: "ad-agent"
+    variables:
+      product: "iPhone 15 Pro"
+    expected: |
+      Объявление содержит конкретное УТП товара,
+      призыв к действию (купить/заказать/узнать цену),
+      не длиннее 3 предложений,
+      подходит для рекламной платформы Яндекс Директ
+    evaluator: "llm-judge"
+    metadata:
+      judgeProvider: "openrouter"
+      judgeModel: "mistralai/mistral-7b-instruct:free"
+
+  - promptId: "ad-prompt"
+    agent: "ad-agent"
+    variables:
+      product: "Samsung Galaxy S24"
+    expected: |
+      Объявление содержит конкретное УТП товара,
+      призыв к действию (купить/заказать/узнать цену),
+      не длиннее 3 предложений,
+      подходит для рекламной платформы Яндекс Директ
+    evaluator: "llm-judge"
+    metadata:
+      judgeProvider: "openrouter"
+      judgeModel: "mistralai/mistral-7b-instruct:free"
+
+  - promptId: "ad-prompt"
+    agent: "ad-agent"
+    variables:
+      product: "MacBook Air M3"
+    expected: |
+      Объявление содержит конкретное УТП товара,
+      призыв к действию (купить/заказать/узнать цену),
+      не длиннее 3 предложений,
+      подходит для рекламной платформы Яндекс Директ
+    evaluator: "llm-judge"
+    metadata:
+      judgeProvider: "openrouter"
+      judgeModel: "mistralai/mistral-7b-instruct:free"
+
+  - promptId: "ad-prompt"
+    agent: "ad-agent"
+    variables:
+      product: "Lenovo ThinkPad X1"
+    expected: |
+      Объявление содержит конкретное УТП товара,
+      призыв к действию (купить/заказать/узнать цену),
+      не длиннее 3 предложений,
+      подходит для рекламной платформы Яндекс Директ
+    evaluator: "llm-judge"
+    metadata:
+      judgeProvider: "openrouter"
+      judgeModel: "mistralai/mistral-7b-instruct:free"
+
+  - promptId: "ad-prompt"
+    agent: "ad-agent"
+    variables:
+      product: "Sony WH-1000XM5"
+    expected: |
+      Объявление содержит конкретное УТП товара,
+      призыв к действию (купить/заказать/узнать цену),
+      не длиннее 3 предложений,
+      подходит для рекламной платформы Яндекс Директ
+    evaluator: "llm-judge"
+    metadata:
+      judgeProvider: "openrouter"
+      judgeModel: "mistralai/mistral-7b-instruct:free"
+
+  - promptId: "ad-prompt"
+    agent: "ad-agent"
+    variables:
+      product: "AirPods Pro 2"
+    expected: |
+      Объявление содержит конкретное УТП товара,
+      призыв к действию (купить/заказать/узнать цену),
+      не длиннее 3 предложений,
+      подходит для рекламной платформы Яндекс Директ
+    evaluator: "llm-judge"
+    metadata:
+      judgeProvider: "openrouter"
+      judgeModel: "mistralai/mistral-7b-instruct:free"
+
+  - promptId: "ad-prompt"
+    agent: "ad-agent"
+    variables:
+      product: "робот-пылесос Xiaomi S10"
+    expected: |
+      Объявление содержит конкретное УТП товара,
+      призыв к действию (купить/заказать/узнать цену),
+      не длиннее 3 предложений,
+      подходит для рекламной платформы Яндекс Директ
+    evaluator: "llm-judge"
+    metadata:
+      judgeProvider: "openrouter"
+      judgeModel: "mistralai/mistral-7b-instruct:free"
+
+  - promptId: "ad-prompt"
+    agent: "ad-agent"
+    variables:
+      product: "Яндекс Станция Макс"
+    expected: |
+      Объявление содержит конкретное УТП товара,
+      призыв к действию (купить/заказать/узнать цену),
+      не длиннее 3 предложений,
+      подходит для рекламной платформы Яндекс Директ
+    evaluator: "llm-judge"
+    metadata:
+      judgeProvider: "openrouter"
+      judgeModel: "mistralai/mistral-7b-instruct:free"
+
+  - promptId: "ad-prompt"
+    agent: "ad-agent"
+    variables:
+      product: "PlayStation 5 Slim"
+    expected: |
+      Объявление содержит конкретное УТП товара,
+      призыв к действию (купить/заказать/узнать цену),
+      не длиннее 3 предложений,
+      подходит для рекламной платформы Яндекс Директ
+    evaluator: "llm-judge"
+    metadata:
+      judgeProvider: "openrouter"
+      judgeModel: "mistralai/mistral-7b-instruct:free"
+
+  - promptId: "ad-prompt"
+    agent: "ad-agent"
+    variables:
+      product: "геймерская мышь Razer DeathAdder"
+    expected: |
+      Объявление содержит конкретное УТП товара,
+      призыв к действию (купить/заказать/узнать цену),
+      не длиннее 3 предложений,
+      подходит для рекламной платформы Яндекс Директ
+    evaluator: "llm-judge"
+    metadata:
+      judgeProvider: "openrouter"
+      judgeModel: "mistralai/mistral-7b-instruct:free"
+
+  - promptId: "ad-prompt"
+    agent: "ad-agent"
+    variables:
+      product: "внешний SSD Samsung T7 1TB"
+    expected: |
+      Объявление содержит конкретное УТП товара,
+      призыв к действию (купить/заказать/узнать цену),
+      не длиннее 3 предложений,
+      подходит для рекламной платформы Яндекс Директ
+    evaluator: "llm-judge"
+    metadata:
+      judgeProvider: "openrouter"
+      judgeModel: "mistralai/mistral-7b-instruct:free"
+
+  - promptId: "ad-prompt"
+    agent: "ad-agent"
+    variables:
+      product: "powerbank Anker 20000mAh"
+    expected: |
+      Объявление содержит конкретное УТП товара,
+      призыв к действию (купить/заказать/узнать цену),
+      не длиннее 3 предложений,
+      подходит для рекламной платформы Яндекс Директ
+    evaluator: "llm-judge"
+    metadata:
+      judgeProvider: "openrouter"
+      judgeModel: "mistralai/mistral-7b-instruct:free"
+
+execution:
+  enableParallelExecution: false
+  testTimeout: 60s
+
+regression:
+  baselineMode: RECORD
+
+optimizer:
+  enabled: true
+  type: rule-based
+  mode: APPLY
+  iterations: 6
+  plateau_score_epsilon: 0
+  rules:
+    enableClarityOptimization: true
+    enableSpecificityOptimization: true
+    enableLengthOptimization: true

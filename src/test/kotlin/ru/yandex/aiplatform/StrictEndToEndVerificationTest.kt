@@ -1,5 +1,6 @@
 package ru.yandex.aiplatform
 
+import io.mockk.mockk
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Assertions.*
@@ -65,10 +66,12 @@ class StrictEndToEndVerificationTest {
         
         baselineExperimentRunner = BaselineExperimentRunner(
             runTestSuiteUseCase = runTestSuiteUseCase,
+            optimizationExperimentRunner = mockk(relaxed = true),
             configurationRepository = configurationRepository,
             baselineRepository = baselineRepository,
             regressionDetectionService = regressionDetectionService,
-            providerValidationService = providerValidationService
+            providerValidationService = providerValidationService,
+            optimizationHtmlReportGenerator = OptimizationHtmlReportGenerator(),
         )
     }
     
@@ -225,7 +228,7 @@ class StrictEndToEndVerificationTest {
         }
     }
 
-    private fun validateMetricsIndependence(testRun: TestRunRecord) {
+    private suspend fun validateMetricsIndependence(testRun: TestRunRecord) {
         testRun.results.forEachIndexed { index, result ->
             assertTrue(result.metrics.isNotEmpty(),
                 "TestResult[$index] must have metrics")

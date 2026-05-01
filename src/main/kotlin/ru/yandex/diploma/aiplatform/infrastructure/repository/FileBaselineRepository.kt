@@ -1,5 +1,6 @@
 package ru.yandex.diploma.aiplatform.infrastructure.repository
 
+import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
@@ -41,8 +42,10 @@ class FileBaselineRepository private constructor(
     private val suiteLocks = ConcurrentHashMap<String, Mutex>()
     private val mapper = jacksonObjectMapper()
         .registerModule(JavaTimeModule())
+        .enable(SerializationFeature.INDENT_OUTPUT)
         .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
         .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+        .setSerializationInclusion(JsonInclude.Include.NON_NULL)
 
     init {
         Files.createDirectories(root)

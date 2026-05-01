@@ -81,17 +81,35 @@ class LlmPromptOptimizer(
                                 finalized.template,
                             )
                         } catch (e: IllegalArgumentException) {
-                            throw PromptOptimizationException(
-                                message = e.message ?: "Placeholder multiset mismatch",
-                                cause = e,
-                                optimizerType = optimizerType,
+                            logger.warn(
+                                "APPLY template placeholder mismatch (attempt {}/{}): {}",
+                                attempt + 1,
+                                MAX_RETRIES,
+                                e.message,
                             )
+                            if (attempt >= MAX_RETRIES - 1) {
+                                throw PromptOptimizationException(
+                                    message = e.message ?: "Placeholder multiset mismatch",
+                                    cause = e,
+                                    optimizerType = optimizerType,
+                                )
+                            }
+                            return@repeat
                         }
                     }
                 }
 
                 return buildOptimizationResult(startTime, input, llmConfig, mapped, raw, config.mode)
             } catch (e: PromptOptimizationException) {
+                if (isRetryableOptimizerEnvelopeFailure(e) && attempt < MAX_RETRIES - 1) {
+                    logger.warn(
+                        "LLM optimizer envelope retryable failure (attempt {}/{}): {}",
+                        attempt + 1,
+                        MAX_RETRIES,
+                        e.message,
+                    )
+                    return@repeat
+                }
                 throw e
             } catch (e: IllegalArgumentException) {
                 throw PromptOptimizationException(
@@ -100,6 +118,15 @@ class LlmPromptOptimizer(
                     optimizerType = optimizerType,
                 )
             } catch (e: JsonProcessingException) {
+                if (attempt < MAX_RETRIES - 1) {
+                    logger.warn(
+                        "LLM optimizer JSON parse retry (attempt {}/{}): {}",
+                        attempt + 1,
+                        MAX_RETRIES,
+                        e.message,
+                    )
+                    return@repeat
+                }
                 throw PromptOptimizationException(
                     message = "Invalid JSON: ${e.message}",
                     cause = e,
@@ -129,26 +156,46 @@ class LlmPromptOptimizer(
     }
 
     private fun deserializeEnvelope(raw: String): LlmOptimizationEnvelopeDto {
-        val clipped =
-            OptimizationJsonExtractions.stripFenceAndExtract(raw)
-                ?: OptimizationJsonExtractions.firstBalancedJsonObject(raw.trim())
-                ?: throw PromptOptimizationException("No JSON object in LLM response", optimizerType = optimizerType)
-        return try {
-            jsonMapper.readValue<LlmOptimizationEnvelopeDto>(clipped)
-        } catch (_: Exception) {
-            val salvage =
-                OptimizationJsonExtractions.firstBalancedJsonObject(raw.trim())
-                    ?: clipped
+        val trimmed = raw.trim().removePrefix("\uFEFF")
+        if (trimmed.isEmpty()) {
+            throw PromptOptimizationException(
+                "No JSON object in LLM response (empty body)",
+                optimizerType = optimizerType,
+            )
+        }
+
+        val candidates = LinkedHashSet<String>()
+        OptimizationJsonExtractions.stripFenceAndExtract(trimmed)?.let { candidates.add(it) }
+        OptimizationJsonExtractions.firstBalancedJsonObject(trimmed)?.let { candidates.add(it) }
+        candidates.addAll(OptimizationJsonExtractions.balancedJsonObjectsFrom(trimmed))
+
+        if (candidates.isEmpty()) {
+            throw PromptOptimizationException("No JSON object in LLM response", optimizerType = optimizerType)
+        }
+
+        var lastParseError: Exception? = null
+        for (clipped in candidates) {
             try {
-                jsonMapper.readValue<LlmOptimizationEnvelopeDto>(salvage)
+                return jsonMapper.readValue<LlmOptimizationEnvelopeDto>(clipped)
             } catch (e: Exception) {
-                throw PromptOptimizationException(
-                    message = "Invalid JSON envelope from LLM: ${e.message}",
-                    cause = e,
-                    optimizerType = optimizerType,
-                )
+                lastParseError = e
             }
         }
+
+        throw PromptOptimizationException(
+            message = "Invalid JSON envelope from LLM: ${lastParseError?.message}",
+            cause = lastParseError,
+            optimizerType = optimizerType,
+        )
+    }
+
+    private fun isRetryableOptimizerEnvelopeFailure(e: PromptOptimizationException): Boolean {
+        val m = e.message ?: return false
+        return m.contains("No JSON object in LLM response", ignoreCase = true) ||
+            m.contains("Invalid JSON envelope from LLM", ignoreCase = true) ||
+            m.startsWith("Invalid JSON:") ||
+            m.contains("optimizedPrompt missing", ignoreCase = true) ||
+            m.contains("optimizedPrompt.template blank", ignoreCase = true)
     }
 
     private fun mapEnvelopeToOptimizationFields(
@@ -305,8 +352,31 @@ class LlmPromptOptimizer(
             userExtra?.takeIf { it.isNotBlank() }?.trim()?.also { appendLine(it) }
         }.trim()
 
-    private fun buildMetaPrompt(input: OptimizationInput, mode: OptimizationMode, attempt: Int): String =
-        buildString {
+    private fun buildMetaPrompt(input: OptimizationInput, mode: OptimizationMode, attempt: Int): String {
+        val overrideBody = input.metaPromptOverride?.takeIf { it.isNotBlank() }
+        if (overrideBody != null) {
+            return buildString {
+                appendLine("# Prompt optimization (${mode})")
+                when (attempt) {
+                    1 -> appendLine("(Retry: conform to JSON strictly; placeholders must remain identical.)")
+                    else -> {}
+                }
+                if (attempt >= 2) {
+                    appendLine("(Last-chance retry: fix JSON quoting only copy template placeholders verbatim.)")
+                }
+                appendLine(overrideBody)
+                appendLine()
+                val varsFromTpl = extractTemplateVariables(input.originalPrompt.template)
+                val canonical = varsFromTpl.ifEmpty { input.originalPrompt.variables }
+                appendLine(
+                    "## Preserve these template variables verbatim in APPLY mode (same spelling): `${canonical.joinToString()}`",
+                )
+                appendLine()
+                appendLine("# JSON schema you MUST obey")
+                appendLine(schemaDescription(mode, attempt))
+            }.trim()
+        }
+        return buildString {
             appendLine("# Prompt optimization (${mode})")
             when (attempt) {
                 1 -> appendLine("(Retry: conform to JSON strictly; placeholders must remain identical.)")
@@ -347,6 +417,7 @@ class LlmPromptOptimizer(
             appendLine("# JSON schema you MUST obey")
             appendLine(schemaDescription(mode, attempt))
         }.trim()
+    }
 
     private fun clip(s: String, max: Int): String =
         if (s.length <= max) {

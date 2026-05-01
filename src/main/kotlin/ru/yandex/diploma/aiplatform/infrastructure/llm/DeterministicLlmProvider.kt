@@ -1,14 +1,12 @@
 package ru.yandex.diploma.aiplatform.infrastructure.llm
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
-import org.springframework.context.annotation.Profile
 import org.springframework.stereotype.Component
 import ru.yandex.diploma.aiplatform.domain.model.LlmRequest
 import ru.yandex.diploma.aiplatform.domain.model.LlmResponse
 import ru.yandex.diploma.aiplatform.domain.provider.LlmProvider
 
 @Component
-@Profile("test")
 @ConditionalOnProperty(value = ["llm.providers.deterministic.enabled"], havingValue = "true")
 class DeterministicLlmProvider : LlmProvider {
     

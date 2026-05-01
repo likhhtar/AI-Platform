@@ -12,11 +12,22 @@ data class OptimizationConfig(
     val ruleBasedConfig: RuleBasedOptimizerConfig? = null,
     val plateauScoreEpsilon: Double = 0.008,
     val rollbackMedianThreshold: Double = 0.015,
+    val mutationPrompt: String =
+        "Rewrite this instruction to be clearer and more specific",
+    val evolveMutationPrompt: Boolean = false,
+    val mutationEvolveEveryNIterations: Int = 3,
+    val useLineage: Boolean = true,
+    val useLamarckian: Boolean = true,
+    val useEda: Boolean = false,
+    val useTextGrad: Boolean = false,
 ) {
     init {
         require(iterations > 0) { "Iterations must be positive" }
         require(plateauScoreEpsilon >= 0.0) { "plateauScoreEpsilon must be non-negative" }
         require(rollbackMedianThreshold >= 0.0) { "rollbackMedianThreshold must be non-negative" }
+        require(mutationEvolveEveryNIterations > 0) {
+            "mutationEvolveEveryNIterations must be positive"
+        }
         if (enabled && type == OptimizerType.LLM) {
             requireNotNull(llmConfig) { "LLM config is required when using LLM optimizer" }
         }
@@ -82,7 +93,8 @@ data class OptimizationInput(
     val originalPrompt: Prompt,
     val testCases: List<TestCase>,
     val testResults: List<TestResult>,
-    val agentConfig: AgentConfig
+    val agentConfig: AgentConfig,
+    val metaPromptOverride: String? = null,
 ) {
     init {
         require(testCases.isNotEmpty()) { "Test cases cannot be empty" }
@@ -173,6 +185,15 @@ data class OptimizationIterationSummary(
     val haltedDueToCycle: Boolean = false,
 )
 
+data class OptimizationIterationReportRow(
+    val iteration: Int,
+    val proposedPromptTemplate: String,
+    val scoreBefore: Double?,
+    val scoreAfter: Double?,
+    val rolledBack: Boolean,
+    val rollbackReason: String?,
+)
+
 data class OptimizationExperimentResult(
     val baselineResult: ExperimentResult,
     val optimizationResult: OptimizationResult,
@@ -182,4 +203,17 @@ data class OptimizationExperimentResult(
     val executionTimeMs: Long,
     val timestamp: String = Instant.now().toString(),
     val iterationSummaries: List<OptimizationIterationSummary> = emptyList(),
+    val iterationReportRows: List<OptimizationIterationReportRow> = emptyList(),
+)
+
+data class PromptVersion(
+    val mutationPrompt: String? = null,
+    val iteration: Int? = null,
+    val prompt: String? = null,
+    val score: Double? = null,
+)
+
+data class JudgeExplanation(
+    val explanation: String,
+    val score: Double,
 )

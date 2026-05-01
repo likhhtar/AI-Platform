@@ -5,12 +5,14 @@ import org.springframework.stereotype.Component
 import ru.yandex.diploma.aiplatform.domain.provider.LlmProvider
 import ru.yandex.diploma.aiplatform.infrastructure.llm.config.OpenAiConfig
 import ru.yandex.diploma.aiplatform.infrastructure.llm.config.OpenRouterConfig
+import ru.yandex.diploma.aiplatform.infrastructure.llm.config.YandexElizaConfig
 
 @Component
 class LlmInfrastructureStartupValidator(
     private val providers: List<LlmProvider>,
     private val openAiConfig: OpenAiConfig,
-    private val openRouterConfig: OpenRouterConfig
+    private val openRouterConfig: OpenRouterConfig,
+    private val yandexElizaConfig: YandexElizaConfig,
 ) {
 
     @PostConstruct
@@ -41,6 +43,17 @@ class LlmInfrastructureStartupValidator(
         if (openRouterConfig.enabled && providers.none { it.providerId == "openrouter" }) {
             throw IllegalStateException(
                 "OpenRouter is enabled in configuration but OpenRouterLlmProvider is not registered (check conditional beans)."
+            )
+        }
+        if (yandexElizaConfig.enabled && yandexElizaConfig.oauthToken.isBlank()) {
+            throw IllegalStateException(
+                "llm.providers.yandex-eliza.enabled=true but llm.providers.yandex-eliza.oauth-token is blank. " +
+                    "Set SOY_TOKEN or disable the provider."
+            )
+        }
+        if (yandexElizaConfig.enabled && providers.none { it.providerId == "yandex-eliza" }) {
+            throw IllegalStateException(
+                "Yandex Eliza is enabled in configuration but YandexElizaLlmProvider is not registered (check conditional beans)."
             )
         }
     }

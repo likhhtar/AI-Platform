@@ -4,8 +4,11 @@ import java.util.regex.Matcher
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import ru.yandex.diploma.aiplatform.domain.model.*
+import ru.yandex.diploma.aiplatform.domain.model.containsMatchOutsidePlaceholderSpans
 import ru.yandex.diploma.aiplatform.domain.model.extractTemplateVariables
+import ru.yandex.diploma.aiplatform.domain.model.missingTemplatePlaceholders
 import ru.yandex.diploma.aiplatform.domain.model.replaceRegexOutsidePlaceholderSpans
+import ru.yandex.diploma.aiplatform.domain.model.transformOutsidePlaceholderSpans
 import ru.yandex.diploma.aiplatform.domain.model.validateTemplatePlaceholderBagPreservation
 import ru.yandex.diploma.aiplatform.domain.service.PromptOptimizationException
 import ru.yandex.diploma.aiplatform.domain.service.PromptOptimizer
@@ -43,17 +46,26 @@ class RuleBasedPromptOptimizer : PromptOptimizer {
             }
             if (rc.enableLengthOptimization) staged.add { t, c, r -> balanceLength(t, c, r) }
 
-            var working = input.originalPrompt.template
+            val originalTemplate = input.originalPrompt.template
+            var working = originalTemplate
             val appliedRuleNames = mutableListOf<String>()
             for (stage in staged) {
                 val (next, label) = stage(working, ctx, rc)
-                if (next != working) {
-                    appliedRuleNames += label
-                    working = next
+                if (next == working) continue
+                val missing = missingTemplatePlaceholders(originalTemplate, next)
+                if (missing.isNotEmpty()) {
+                    logger.warn(
+                        "Skipping rule-based stage '{}': would drop template placeholders {}",
+                        label,
+                        missing,
+                    )
+                    continue
                 }
+                appliedRuleNames += label
+                working = next
             }
 
-            working = applyConfigurableRegexRules(working, rc.rules, appliedRuleNames)
+            working = applyConfigurableRegexRules(originalTemplate, working, rc.rules, appliedRuleNames)
 
             try {
                 validateTemplatePlaceholderBagPreservation(input.originalPrompt.template, working)
@@ -144,16 +156,18 @@ class RuleBasedPromptOptimizer : PromptOptimizer {
 
     private fun stripVagueLanguageInPlainTextSegments(tpl: String): String =
         transformOutsideTripleBacktickRegions(tpl) { segment ->
-            var next = segment
-            val pairs =
-                listOf(
-                    Regex("""\b(something|somewhat|maybe|perhaps|kind of|sort of)\b""", RegexOption.IGNORE_CASE) to "",
-                    Regex("""(что-то|как-то|возможно|наверное|вроде бы)""") to "",
-                )
-            for ((re, replacement) in pairs) {
-                next = re.replace(next, Matcher.quoteReplacement(replacement))
+            transformOutsidePlaceholderSpans(segment) { plain ->
+                var next = plain
+                val pairs =
+                    listOf(
+                        Regex("""\b(something|somewhat|maybe|perhaps|kind of|sort of)\b""", RegexOption.IGNORE_CASE) to "",
+                        Regex("""(что-то|как-то|возможно|наверное|вроде бы)""", RegexOption.IGNORE_CASE) to "",
+                    )
+                for ((re, replacement) in pairs) {
+                    next = re.replace(next, Matcher.quoteReplacement(replacement))
+                }
+                next
             }
-            next
         }
 
     private fun transformOutsideTripleBacktickRegions(template: String, transform: (String) -> String): String {
@@ -183,15 +197,21 @@ class RuleBasedPromptOptimizer : PromptOptimizer {
         ctx: RuleContext,
         @Suppress("UNUSED_PARAMETER") rc: RuleBasedOptimizerConfig,
     ): Pair<String, String> {
-        if (Regex("""(?i)output format""").containsMatchIn(tpl)) return tpl to "skipOutputContract"
+        val marker = "<!-- rule:output-contract -->"
+        if (tpl.contains(marker) ||
+            Regex("""(?i)(output contract|контракт вывода)""").containsMatchIn(tpl)
+        ) {
+            return tpl to "skipOutputContract"
+        }
         val block =
             buildString {
                 appendLine()
-                appendLine("### Output contract")
-                appendLine("Answer the user request first.")
-                appendLine("Keep the answer concise unless more detail is explicitly required.")
+                appendLine(marker)
+                appendLine("### Контракт вывода")
+                appendLine("Сначала ответь на запрос пользователя.")
+                appendLine("Держи ответ кратким, если явно не требуется больше деталей.")
                 if (ctx.failures > 0) {
-                    appendLine("Prefer correctness over creativity when requirements look test-like.")
+                    appendLine("При тестоподобных требованиях предпочитай точность креативности.")
                 }
             }
         return (tpl.trimEnd() + "\n" + block.trim()) to "injectOutputContract"
@@ -203,13 +223,15 @@ class RuleBasedPromptOptimizer : PromptOptimizer {
         @Suppress("UNUSED_PARAMETER") rc: RuleBasedOptimizerConfig,
     ): Pair<String, String> {
         val jsonHint = Regex("""(?i)(json|schema|array|object)\b""").containsMatchIn(tpl + ctx.original.name)
-        val testJson = ctx.failures > 0 && Regex("""[{}"]""").containsMatchIn(tpl)
+        val testJson =
+            ctx.failures > 0 &&
+                containsMatchOutsidePlaceholderSpans(tpl, Regex("""[{}\[\]"]"""))
         if (!jsonHint && !testJson) return tpl to "skipJsonOnly"
         if (Regex("""(?i)(only json|строго json)""").containsMatchIn(tpl)) return tpl to "alreadyJsonOnly"
         val block =
             """
-            |### Structured output
-            |If the answer must be machine-readable, respond with VALID JSON ONLY, no markdown fences, no commentary before/after.
+            |### Структурированный вывод
+            |Если ответ должен быть машиночитаемым, отвечай ТОЛЬКО ВАЛИДНЫМ JSON, без markdown-ограждений и без комментариев до/после.
             """.trimMargin()
         return (tpl.trimEnd() + "\n" + block) to "injectStructuredJsonRule"
     }
@@ -220,12 +242,18 @@ class RuleBasedPromptOptimizer : PromptOptimizer {
         @Suppress("UNUSED_PARAMETER") rc: RuleBasedOptimizerConfig,
     ): Pair<String, String> {
         if (ctx.failures <= 1 && ctx.lowScores <= 1) return tpl to "skipHardConstraints"
-        if (Regex("""(?i)(do not|don't|не\s)""").containsMatchIn(tpl)) return tpl to "alreadyHasNegatives"
+        val marker = "<!-- rule:constraints -->"
+        if (tpl.contains(marker) ||
+            Regex("""(?i)(### constraints|### ограничения)""").containsMatchIn(tpl)
+        ) {
+            return tpl to "alreadyHasNegatives"
+        }
         val block =
             """
-            |### Constraints
-            |- Do not contradict earlier instructions.
-            |- If unsure, state assumptions explicitly in one short sentence.
+            |$marker
+            |### Ограничения
+            |- Не противоречь предыдущим инструкциям.
+            |- Если не уверен, явно укажи допущения в одном коротком предложении.
             """.trimMargin()
         return (tpl.trimEnd() + "\n" + block) to "failureDrivenConstraints"
     }
@@ -240,16 +268,17 @@ class RuleBasedPromptOptimizer : PromptOptimizer {
         val lines = tpl.lines()
         val withHeadings =
             buildString {
-                appendLine("### Primary instructions")
+                appendLine("### Основные инструкции")
                 lines.take(40).joinTo(this, separator = "\n")
                 appendLine()
-                appendLine("### Additional context")
+                appendLine("### Дополнительный контекст")
                 lines.drop(40).joinTo(this, separator = "\n")
             }
         return withHeadings to "sectionRewriteLongPrompt"
     }
 
     private fun applyConfigurableRegexRules(
+        originalTemplate: String,
         template: String,
         rules: List<OptimizationRule>,
         audit: MutableList<String>,
@@ -263,6 +292,15 @@ class RuleBasedPromptOptimizer : PromptOptimizer {
                 val pattern = Regex(rule.pattern, RegexOption.IGNORE_CASE)
                 val safeReplacement = Matcher.quoteReplacement(rule.replacement)
                 val next = replaceRegexOutsidePlaceholderSpans(acc, pattern, safeReplacement)
+                val missing = missingTemplatePlaceholders(originalTemplate, next)
+                if (missing.isNotEmpty()) {
+                    logger.warn(
+                        "Skipping regex rule '{}': would drop template placeholders {}",
+                        rule.name,
+                        missing,
+                    )
+                    return@fold acc
+                }
                 if (next != acc) {
                     audit += "regex:${rule.name}"
                     logger.info("Regex rule '{}' applied (pattern chars={})", rule.name, rule.pattern.length)

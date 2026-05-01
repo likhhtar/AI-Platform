@@ -1,5 +1,6 @@
 package ru.yandex.diploma.aiplatform.infrastructure.evaluator
 
+import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -15,7 +16,7 @@ class ExactMatchEvaluatorTest {
     }
 
     @Test
-    fun `should pass when output exactly matches expected`() {
+    fun `should pass when output exactly matches expected`() = runBlocking {
         val output = "Hello World"
         val expected = "Hello World"
 
@@ -27,7 +28,7 @@ class ExactMatchEvaluatorTest {
     }
 
     @Test
-    fun `should fail when output does not match expected`() {
+    fun `should fail when output does not match expected`() = runBlocking {
         val output = "Hello World"
         val expected = "Goodbye World"
 
@@ -39,7 +40,7 @@ class ExactMatchEvaluatorTest {
     }
 
     @Test
-    fun `should handle case sensitivity correctly`() {
+    fun `should handle case sensitivity correctly`() = runBlocking {
         val output = "Hello World"
         val expected = "hello world"
 
@@ -48,8 +49,8 @@ class ExactMatchEvaluatorTest {
         assertFalse(caseSensitiveResult.passed)
 
         val caseInsensitiveResult = evaluator.evaluate(
-            output, 
-            expected, 
+            output,
+            expected,
             mapOf("caseSensitive" to false)
         )
 
@@ -57,7 +58,7 @@ class ExactMatchEvaluatorTest {
     }
 
     @Test
-    fun `should handle whitespace trimming correctly`() {
+    fun `should handle whitespace trimming correctly`() = runBlocking {
         val output = "  Hello World  "
         val expected = "Hello World"
 
@@ -66,8 +67,8 @@ class ExactMatchEvaluatorTest {
         assertTrue(trimmedResult.passed)
 
         val untrimmedResult = evaluator.evaluate(
-            output, 
-            expected, 
+            output,
+            expected,
             mapOf("trimWhitespace" to false)
         )
 
@@ -75,7 +76,7 @@ class ExactMatchEvaluatorTest {
     }
 
     @Test
-    fun `should handle empty strings correctly`() {
+    fun `should handle empty strings correctly`() = runBlocking {
         val output = ""
         val expected = ""
 

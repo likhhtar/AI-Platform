@@ -191,8 +191,13 @@ object TestConfigurationYamlEmitter {
     private fun yamlDoubleQuoted(value: String): String =
         '"' + value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "") + '"'
 
-    private fun scalarYaml(s: String): String =
-        if (Regex("""[:#\-?[\]{},]|\s""").containsMatchIn(s)) yamlDoubleQuoted(s) else s
+    private fun needsQuoting(value: String): Boolean =
+        value.any { it in setOf(':', '#', '-', '?', '[', ']', '{', '}', ',') }
+
+    private fun scalarYaml(s: String): String {
+        val needsQuotes = needsQuoting(s) || s.any { it.isWhitespace() }
+        return if (needsQuotes) yamlDoubleQuoted(s) else s
+    }
 
     private fun primitiveToYamlScalar(v: Any): String =
         when (v) {

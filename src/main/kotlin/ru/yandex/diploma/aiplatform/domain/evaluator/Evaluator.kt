@@ -4,11 +4,11 @@ import ru.yandex.diploma.aiplatform.domain.model.EvaluationResult
 
 interface Evaluator {
     val evaluatorType: String
-    
-    fun evaluate(
-        output: String, 
-        expected: String, 
-        metadata: Map<String, Any> = emptyMap()
+
+    suspend fun evaluate(
+        output: String,
+        expected: String,
+        metadata: Map<String, Any> = emptyMap(),
     ): EvaluationResult
 }
 

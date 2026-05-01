@@ -55,7 +55,9 @@ class YamlTestConfigurationRepository : TestConfigurationRepository {
         try {
             val agents = parseAgents(data["agents"].asListOfStringKeyedMapsOrEmpty())
             val prompts = parsePrompts(data["prompts"].asListOfStringKeyedMapsOrEmpty())
-            
+
+            // Поддерживается только snake_case: test_cases.
+            // camelCase (testCases) не поддерживается парсером.
             val testsData = data["tests"].asListOfStringKeyedMapsOrEmpty()
                 .ifEmpty { data["test_cases"].asListOfStringKeyedMapsOrEmpty() }
             
@@ -276,7 +278,14 @@ class YamlTestConfigurationRepository : TestConfigurationRepository {
     private fun parseOptimizationConfig(data: Map<String, Any>, source: String): OptimizationConfig? {
         if (data.isEmpty()) return null
         
-        val enabled = data["enabled"] as? Boolean ?: false
+        val enabled =
+            when (val raw = data["enabled"]) {
+                is Boolean -> raw
+                is String ->
+                    raw.trim().equals("true", ignoreCase = true) ||
+                        raw.trim().equals("yes", ignoreCase = true)
+                else -> false
+            }
         if (!enabled) return OptimizationConfig(enabled = false)
         
         val modeStr = data["mode"] as? String
@@ -305,6 +314,35 @@ class YamlTestConfigurationRepository : TestConfigurationRepository {
                 ?: (data["rollback_median_threshold"] as? Number)?.toDouble()
                 ?: 0.015
 
+        val mutationPrompt =
+            data["mutationPrompt"] as? String
+                ?: data["mutation_prompt"] as? String
+                ?: "Rewrite this instruction to be clearer and more specific"
+        val evolveMutationPrompt =
+            data["evolveMutationPrompt"] as? Boolean
+                ?: data["evolve_mutation_prompt"] as? Boolean
+                ?: false
+        val mutationEvolveEveryNIterations =
+            (data["mutationEvolveEveryNIterations"] as? Number)?.toInt()
+                ?: (data["mutation_evolve_every_n_iterations"] as? Number)?.toInt()
+                ?: 3
+        val useLineage =
+            data["useLineage"] as? Boolean
+                ?: data["use_lineage"] as? Boolean
+                ?: true
+        val useLamarckian =
+            data["useLamarckian"] as? Boolean
+                ?: data["use_lamarckian"] as? Boolean
+                ?: true
+        val useEda =
+            data["useEda"] as? Boolean
+                ?: data["use_eda"] as? Boolean
+                ?: false
+        val useTextGrad =
+            data["useTextGrad"] as? Boolean
+                ?: data["use_textgrad"] as? Boolean
+                ?: false
+
         val llmConfig = if (type == OptimizerType.LLM) {
             parseLlmOptimizerConfig(data["llm"].asStringKeyedMapOrEmpty())
         } else null
@@ -322,6 +360,13 @@ class YamlTestConfigurationRepository : TestConfigurationRepository {
             ruleBasedConfig = ruleBasedConfig,
             plateauScoreEpsilon = plateauScoreEpsilon.coerceAtLeast(0.0),
             rollbackMedianThreshold = rollbackMedianThreshold.coerceAtLeast(0.0),
+            mutationPrompt = mutationPrompt,
+            evolveMutationPrompt = evolveMutationPrompt,
+            mutationEvolveEveryNIterations = mutationEvolveEveryNIterations,
+            useLineage = useLineage,
+            useLamarckian = useLamarckian,
+            useEda = useEda,
+            useTextGrad = useTextGrad,
         )
     }
     

@@ -1,11 +1,13 @@
 package ru.yandex.aiplatform
 
+import io.mockk.mockk
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import ru.yandex.diploma.aiplatform.application.usecase.BaselineExperimentRunner
+import ru.yandex.diploma.aiplatform.application.usecase.OptimizationExperimentRunner
 import ru.yandex.diploma.aiplatform.application.usecase.RunTestSuiteUseCase
 import ru.yandex.diploma.aiplatform.domain.evaluator.EvaluatorRegistry
 import ru.yandex.diploma.aiplatform.domain.model.AgentConfig
@@ -37,6 +39,7 @@ import ru.yandex.diploma.aiplatform.infrastructure.llm.DeterministicLlmProvider
 import ru.yandex.diploma.aiplatform.domain.repository.BaselineLoadResult
 import ru.yandex.diploma.aiplatform.infrastructure.repository.FileBaselineRepository
 import ru.yandex.diploma.aiplatform.infrastructure.service.DefaultProviderValidationService
+import ru.yandex.diploma.aiplatform.infrastructure.service.OptimizationHtmlReportGenerator
 import ru.yandex.diploma.aiplatform.infrastructure.service.QAVerificationHtmlReportGenerator
 import java.nio.file.Files
 import kotlin.test.assertFailsWith
@@ -116,10 +119,12 @@ class BaselineGoldenE2ETest {
 
         baselineExperimentRunner = BaselineExperimentRunner(
             runTestSuiteUseCase = runTestSuiteUseCase,
+            optimizationExperimentRunner = mockk<OptimizationExperimentRunner>(relaxed = true),
             configurationRepository = configurationRepository,
             baselineRepository = baselineRepository,
             regressionDetectionService = RegressionDetectionService(),
-            providerValidationService = providerValidationService
+            providerValidationService = providerValidationService,
+            optimizationHtmlReportGenerator = OptimizationHtmlReportGenerator(),
         )
     }
 
@@ -203,10 +208,12 @@ class BaselineGoldenE2ETest {
         )
         val runner = BaselineExperimentRunner(
             runTestSuiteUseCase = runTestSuiteUseCase,
+            optimizationExperimentRunner = mockk<OptimizationExperimentRunner>(relaxed = true),
             configurationRepository = configurationRepository,
             baselineRepository = baselineRepository,
             regressionDetectionService = RegressionDetectionService(),
-            providerValidationService = providerValidationService
+            providerValidationService = providerValidationService,
+            optimizationHtmlReportGenerator = OptimizationHtmlReportGenerator(),
         )
 
         val recordConfig = RegressionConfiguration(
