@@ -341,7 +341,6 @@ class OptimizationHtmlReportGenerator : ReportGenerator {
     }
     
     private fun buildStandardHtmlReport(result: TestSuiteResult): String {
-        // Simplified standard report for backward compatibility
         return """
 <!DOCTYPE html>
 <html lang="ru">

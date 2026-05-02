@@ -130,14 +130,12 @@ test_cases:
             assertNotNull(result)
             assertNotNull(result.baselineResult)
             assertEquals(false, result.config.enabled)
-            // When optimization is disabled, optimizedExperimentResult should be null
             assertEquals(null, result.optimizedExperimentResult)
         }
     }
 
     @Test
     fun `should generate optimization report`() = runBlocking {
-        // Create a mock optimization result
         val originalPrompt = Prompt("test", "Test Prompt", "Answer: {{question}}")
         val optimizedPrompt = Prompt("test_opt", "Optimized Test Prompt", "Provide a detailed answer to: {{question}}")
         

@@ -188,10 +188,10 @@ class RuleBasedPromptOptimizer : PromptOptimizer {
             buildString {
                 appendLine()
                 appendLine("### Output contract")
-                appendLine("- Answer the user request first.")
-                appendLine("- Keep the answer concise unless more detail is explicitly required.")
+                appendLine("Answer the user request first.")
+                appendLine("Keep the answer concise unless more detail is explicitly required.")
                 if (ctx.failures > 0) {
-                    appendLine("- Prefer correctness over creativity when requirements look test-like.")
+                    appendLine("Prefer correctness over creativity when requirements look test-like.")
                 }
             }
         return (tpl.trimEnd() + "\n" + block.trim()) to "injectOutputContract"
@@ -209,7 +209,7 @@ class RuleBasedPromptOptimizer : PromptOptimizer {
         val block =
             """
             |### Structured output
-            |If the answer must be machine-readable, respond with VALID JSON ONLY — no markdown fences, no commentary before/after.
+            |If the answer must be machine-readable, respond with VALID JSON ONLY, no markdown fences, no commentary before/after.
             """.trimMargin()
         return (tpl.trimEnd() + "\n" + block) to "injectStructuredJsonRule"
     }
@@ -296,7 +296,7 @@ class RuleBasedPromptOptimizer : PromptOptimizer {
             hints +=
                 OptimizationSuggestion(
                     type = SuggestionType.CONSTRAINTS,
-                    description = "${ctx.failures} failing evaluations — tighten instructions & output contract",
+                    description = "${ctx.failures} failing evaluations, tighten instructions & output contract",
                     originalText = null,
                     suggestedText = null,
                     impact = SuggestionImpact.HIGH,
@@ -325,8 +325,8 @@ class RuleBasedPromptOptimizer : PromptOptimizer {
             appendLine(
                 """Rule optimizer applied deterministic transforms before optional regex substitutions.""",
             )
-            appendLine("- failures watched: $failures; low-score: $lowScores")
-            appendLine("- transforms: ${applied.joinToString(limit = 20)}")
+            appendLine("failures watched: $failures; low-score: $lowScores")
+            appendLine("transforms: ${applied.joinToString(limit = 20)}")
         }.trim()
 
     override suspend fun isAvailable(): Boolean = true

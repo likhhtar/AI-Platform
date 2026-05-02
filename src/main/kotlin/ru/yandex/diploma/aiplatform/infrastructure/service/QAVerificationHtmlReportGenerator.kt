@@ -646,7 +646,6 @@ class QAVerificationHtmlReportGenerator : ReportGenerator {
     
     private fun getEnhancedStyles(): String {
         return """
-        /* Base Styles */
         * { box-sizing: border-box; }
         
         body {
@@ -667,7 +666,6 @@ class QAVerificationHtmlReportGenerator : ReportGenerator {
             overflow: hidden;
         }
         
-        /* Header Styles */
         .header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
@@ -711,7 +709,6 @@ class QAVerificationHtmlReportGenerator : ReportGenerator {
         .verification-status.failed { background: rgba(220, 53, 69, 0.2); border: 2px solid #dc3545; }
         .verification-status.inconclusive { background: rgba(108, 117, 125, 0.2); border: 2px solid #6c757d; }
         
-        /* Section Styles */
         .section {
             padding: 40px;
             border-bottom: 1px solid #e9ecef;
@@ -727,7 +724,6 @@ class QAVerificationHtmlReportGenerator : ReportGenerator {
             padding-bottom: 15px;
         }
         
-        /* Executive Summary */
         .executive-summary {
             background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
         }
@@ -784,7 +780,6 @@ class QAVerificationHtmlReportGenerator : ReportGenerator {
             color: #6c757d;
         }
         
-        /* Red Flags Section */
         .red-flags-section {
             background: #fff5f5;
         }
@@ -919,7 +914,6 @@ class QAVerificationHtmlReportGenerator : ReportGenerator {
             font-size: 0.9em;
         }
         
-        /* QA Metrics Section */
         .qa-metrics-section {
             background: #f8f9fa;
         }
@@ -1023,7 +1017,6 @@ class QAVerificationHtmlReportGenerator : ReportGenerator {
             color: #495057;
         }
         
-        /* Responsive Design */
         @media (max-width: 768px) {
             .container { margin: 10px; }
             .header { padding: 20px; }
@@ -1053,7 +1046,6 @@ class QAVerificationHtmlReportGenerator : ReportGenerator {
         }
         
         document.addEventListener('DOMContentLoaded', function() {
-            // Auto-expand critical red flags
             const criticalFlags = document.querySelectorAll('.red-flag-item.critical');
             criticalFlags.forEach(flag => {
                 const details = flag.querySelector('.flag-details');

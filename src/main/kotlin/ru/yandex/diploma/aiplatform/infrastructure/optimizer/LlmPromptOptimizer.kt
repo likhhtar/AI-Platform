@@ -294,7 +294,7 @@ class LlmPromptOptimizer(
                 "You MUST reply with ONLY a single JSON OBJECT (RFC 8259). No prose, no markdown fences, no BOM.",
             )
             appendLine(
-                """Escape newline characters INSIDE strings as \n — do NOT break JSON validity.""",
+                """Escape newline characters INSIDE strings as \n do NOT break JSON validity.""",
             )
             appendLine(
                 """In APPLY mode rewrite the FULL template body but NEVER rename, omit, add, or refactor {{placeholder}} identifiers — same multiset of names and occurrence counts as the benchmark ({{x}} twice must stay twice).""",
@@ -312,7 +312,7 @@ class LlmPromptOptimizer(
                 1 -> appendLine("(Retry: conform to JSON strictly; placeholders must remain identical.)")
                 else -> {}
             }
-            if (attempt >= 2) appendLine("(Last-chance retry: fix JSON quoting only — copy template placeholders verbatim.)")
+            if (attempt >= 2) appendLine("(Last-chance retry: fix JSON quoting only copy template placeholders verbatim.)")
 
             appendLine("## Prompt template `${input.originalPrompt.id}`")
             appendLine("```txt")
@@ -355,7 +355,6 @@ class LlmPromptOptimizer(
             "${s.take(max)} … [truncated ${s.length - max} chars]"
         }
 
-    /** Isolate user/model text inside the meta-prompt. */
     private fun clippedFence(body: String): String =
         "```txt\n$body\n```"
 

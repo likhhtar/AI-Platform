@@ -66,7 +66,6 @@ enum class OptimizationStatus {
     FAILED,
 }
 
-/** Single structured line for optimization observability (values safe for log appenders). */
 data class OptimizationAuditEvent(
     val iteration: Int?,
     val optimizerType: OptimizerType,

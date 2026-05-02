@@ -15,7 +15,7 @@ object BaselineKeys {
         return "suite-" + sha256Short(configurationSource)
     }
 
-    /** Logical key: `suiteId` + `::` + [stableTestCaseId] (suite id never contains `::`). */
+    // `suiteId` + `::` + `stableTestCaseId` (suiteId never contains `::`).
     fun logicalBaselineKey(suiteId: String, testCaseId: String): String {
         require("::" !in suiteId) { "suiteId must not contain '::'" }
         return "$suiteId::$testCaseId"

@@ -12,40 +12,27 @@ class MockLlmProvider : LlmProvider {
     
     init {
         throw RuntimeException("""
-            🚨 MOCK USAGE FORBIDDEN! 🚨
-            
-            MockLlmProvider instantiation is STRICTLY PROHIBITED.
-            This system MUST run with REAL infrastructure only.
-            
-            REQUIRED ACTIONS:
-            1. Set llm.providers.mock.enabled=false in configuration
-            2. Use ONLY OpenRouterLlmProvider for real LLM calls
-            3. Remove all mock dependencies from tests
-            
-            REAL PROVIDERS AVAILABLE:
-            - OpenRouterLlmProvider (openrouter)
-            
-            Stack trace will show where mock was attempted to be used.
+            MOCK USAGE FORBIDDEN!           
         """.trimIndent())
     }
     
     override val providerId: String = "mock"
     
     override suspend fun generate(request: LlmRequest): LlmResponse {
-        throw RuntimeException("🚨 MOCK USAGE FORBIDDEN! MockLlmProvider.generate() called - system must use REAL LLM providers only!")
+        throw RuntimeException("MOCK USAGE FORBIDDEN! MockLlmProvider.generate() called")
     }
     
     override suspend fun isHealthy(): Boolean {
-        throw RuntimeException("🚨 MOCK USAGE FORBIDDEN! MockLlmProvider.isHealthy() called - system must use REAL LLM providers only!")
+        throw RuntimeException("MOCK USAGE FORBIDDEN! MockLlmProvider.isHealthy() called")
     }
     
     @Deprecated("Mock usage is forbidden", level = DeprecationLevel.ERROR)
     fun addResponse(prompt: String, response: String) {
-        throw RuntimeException("🚨 MOCK USAGE FORBIDDEN! addResponse() called - system must use REAL LLM providers only!")
+        throw RuntimeException("MOCK USAGE FORBIDDEN! addResponse() called")
     }
     
     @Deprecated("Mock usage is forbidden", level = DeprecationLevel.ERROR)
     fun clearResponses() {
-        throw RuntimeException("🚨 MOCK USAGE FORBIDDEN! clearResponses() called - system must use REAL LLM providers only!")
+        throw RuntimeException("MOCK USAGE FORBIDDEN! clearResponses() called")
     }
 }

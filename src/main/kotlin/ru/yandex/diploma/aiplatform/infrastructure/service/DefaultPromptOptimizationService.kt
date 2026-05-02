@@ -42,7 +42,7 @@ class DefaultPromptOptimizationService(
                 experimentRunner.runExperiment(configurationSource, agentConfig)
 
             if (!baselineResult.runs.any { it.success }) {
-                throw PromptOptimizationException("Baseline experiment failed — cannot optimize")
+                throw PromptOptimizationException("Baseline experiment failed, cannot optimize")
             }
 
             return when {
@@ -127,7 +127,7 @@ class DefaultPromptOptimizationService(
                 runCatching { testConfigurationRepository.loadConfiguration(yamlSource) }
                     .getOrElse { ex ->
                         throw PromptOptimizationException(
-                            "Cannot compute semantic fingerprint — failed loading configuration: ${ex.message}",
+                            "Cannot compute semantic fingerprint, failed loading configuration: ${ex.message}",
                             ex,
                         )
                     }
@@ -205,7 +205,7 @@ class DefaultPromptOptimizationService(
                     ),
                 )
                 logger.info(
-                    "Stopping iterative optimization — median delta {} within plateau epsilon {}",
+                    "Stopping iterative optimization, median delta {} within plateau epsilon {}",
                     lastImprovement!!.medianScoreImprovement,
                     optimizationConfig.plateauScoreEpsilon,
                 )
@@ -227,14 +227,14 @@ class DefaultPromptOptimizationService(
                     ),
                 )
                 logger.info(
-                    "Stopping iterative optimization — optimized run discarded (regression vs chain baseline) rollbackReason={}",
+                    "Stopping iterative optimization, optimized run discarded (regression vs chain baseline) rollbackReason={}",
                     lastImprovement!!.rollbackReason ?: "",
                 )
                 break
             }
 
             if (optimizationConfig.mode != OptimizationMode.APPLY) {
-                logger.debug("Stopping — further iterations need APPLY mode to materialize prompts in YAML.")
+                logger.debug("Stopping, further iterations need APPLY mode to materialize prompts in YAML.")
                 break
             }
 
@@ -282,9 +282,6 @@ class DefaultPromptOptimizationService(
         val improvement: OptimizationImprovement?,
     )
 
-    /**
-     * One optimize → (optional APPLY re-run harness) cycle. Baseline scores are evaluated against [baselineForImprovementMetrics].
-     */
     private suspend fun runSingleOptimizationStep(
         baselineForImprovementMetrics: ExperimentResult,
         optimizationConfig: OptimizationConfig,
@@ -415,7 +412,7 @@ class DefaultPromptOptimizationService(
             configurationSourceFallback
                 ?: experimentResult.configurationSource
                 ?: throw PromptOptimizationException(
-                    "Missing configuration YAML/source — cannot resolve real prompt templates. " +
+                    "Missing configuration YAML/source, cannot resolve real prompt templates. " +
                         "Pass configurationSource explicitly or ensure ExperimentRunner attaches it.",
                 )
 
@@ -428,7 +425,7 @@ class DefaultPromptOptimizationService(
         val suiteResults = successfulRun.result!!.results
         if (suiteResults.isEmpty()) {
             throw PromptOptimizationException(
-                "Baseline produced no per-test records — optimizer needs concrete scores per test.",
+                "Baseline produced no per-test records, optimizer needs concrete scores per test.",
             )
         }
 
@@ -470,7 +467,7 @@ class DefaultPromptOptimizationService(
             configurationSourceFallback
                 ?: experimentResult.configurationSource
                 ?: throw PromptOptimizationException(
-                    "Cannot serialize optimized suite — missing YAML source.",
+                    "Cannot serialize optimized suite, missing YAML source.",
                 )
 
         val base =
