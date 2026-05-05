@@ -3,6 +3,7 @@ package ru.yandex.diploma.aiplatform.application.usecase
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import ru.yandex.diploma.aiplatform.domain.model.*
+import ru.yandex.diploma.aiplatform.domain.repository.BaselineLoadResult
 import ru.yandex.diploma.aiplatform.domain.repository.BaselineRepository
 import ru.yandex.diploma.aiplatform.domain.repository.TestConfiguration
 import ru.yandex.diploma.aiplatform.domain.repository.TestConfigurationRepository
@@ -25,7 +26,8 @@ class BaselineExperimentRunner(
     suspend fun executeWithBaseline(
         configurationSource: String,
         executionConfig: ExecutionConfig = ExecutionConfig(),
-        regressionConfig: RegressionConfiguration = RegressionConfiguration.defaultConfiguration()
+        regressionConfig: RegressionConfiguration? = null,
+        baselineModeOverride: BaselinePersistenceMode? = null,
     ): EnhancedTestSuiteResult {
         val configuration = configurationRepository.loadConfiguration(configurationSource)
         val validationErrors = buildList {
@@ -35,6 +37,12 @@ class BaselineExperimentRunner(
         if (validationErrors.isNotEmpty()) {
             throw TestSuiteException("Ошибка валидации конфигурации: ${validationErrors.joinToString(", ")}")
         }
+
+        val resolvedRegressionConfig = mergeRegressionConfiguration(
+            configuration = configuration,
+            regressionOverride = regressionConfig,
+            baselineModeOverride = baselineModeOverride
+        )
 
         val suiteId = BaselineKeys.suiteId(configurationSource, configuration.suiteMetadata)
 
@@ -46,7 +54,7 @@ class BaselineExperimentRunner(
             configuration = configuration
         )
 
-        if (regressionConfig.baselineMode == BaselinePersistenceMode.RECORD && testRunRecord.hasInfrastructureErrors) {
+        if (resolvedRegressionConfig.baselineMode == BaselinePersistenceMode.RECORD && testRunRecord.hasInfrastructureErrors) {
             logger.warn("Baseline recording skipped due to infrastructure errors")
             throw IllegalStateException(
                 "Cannot record baselines: the suite run finished with infrastructure errors " +
@@ -54,20 +62,33 @@ class BaselineExperimentRunner(
             )
         }
 
-        if (regressionConfig.baselineMode == BaselinePersistenceMode.RECORD) {
+        if (resolvedRegressionConfig.baselineMode == BaselinePersistenceMode.RECORD) {
             for (result in testRunRecord.results) {
                 val testCaseId = TestCaseIdentifiers.stableTestCaseId(result.testCase)
                 baselineRepository.saveBaseline(suiteId, testCaseId, result.toBaselineEntry())
             }
         }
 
-        val storedByTestCaseId = baselineRepository.loadAll(suiteId)
+        val storedByTestCaseId =
+            when (val load = baselineRepository.loadAll(suiteId)) {
+                is BaselineLoadResult.Loaded -> load.data
+                is BaselineLoadResult.Missing -> emptyMap()
+                is BaselineLoadResult.Corrupted -> {
+                    logger.warn(
+                        "baseline_store_invalid suiteId={} path={} error={}",
+                        suiteId,
+                        load.path,
+                        load.error,
+                    )
+                    emptyMap()
+                }
+            }
 
         val regressionAnalysis = regressionDetectionService.analyzePersistedBaselines(
             currentRun = testRunRecord,
-            baselineMode = regressionConfig.baselineMode,
+            baselineMode = resolvedRegressionConfig.baselineMode,
             storedByTestCaseId = storedByTestCaseId,
-            regressionRules = regressionConfig.rules,
+            regressionRules = resolvedRegressionConfig.rules,
             suiteId = suiteId
         )
 
@@ -76,8 +97,22 @@ class BaselineExperimentRunner(
             testRun = testRunRecord,
             regressionAnalysis = regressionAnalysis,
             reportFile = originalResult.reportFile,
-            exitCode = determineExitCode(regressionAnalysis, regressionConfig)
+            exitCode = determineExitCode(regressionAnalysis, resolvedRegressionConfig)
         )
+    }
+
+    companion object {
+        fun mergeRegressionConfiguration(
+            configuration: TestConfiguration,
+            regressionOverride: RegressionConfiguration?,
+            baselineModeOverride: BaselinePersistenceMode?,
+        ): RegressionConfiguration {
+            val baseRegression =
+                regressionOverride ?: (configuration.regressionConfiguration ?: RegressionConfiguration.defaultConfiguration())
+            return baseRegression.copy(
+                baselineMode = baselineModeOverride ?: baseRegression.baselineMode
+            )
+        }
     }
 
     private fun convertToTestRunRecord(

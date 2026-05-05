@@ -97,7 +97,7 @@ class StrictEndToEndFailureDetectionTest {
         val corruptedResults = currentResult.testRun.results.map { result ->
             result.copy(
                 evaluationResult = result.evaluationResult.copy(
-                    score = 0.5, // Corrupt the score to something different
+                    score = 0.5,
                     explanation = "CORRUPTED: This should not match the evaluator output"
                 )
             )
@@ -126,7 +126,7 @@ class StrictEndToEndFailureDetectionTest {
             val metricsAverage = testResult.metrics.values.map { it.score }.average()
             testResult.copy(
                 evaluationResult = testResult.evaluationResult.copy(
-                    score = metricsAverage, // Derived from metrics!
+                    score = metricsAverage,
                     explanation = "CORRUPTED: Derived from metrics average"
                 )
             )

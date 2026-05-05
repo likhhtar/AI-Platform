@@ -37,7 +37,7 @@ class StrictEndToEndVerificationTest {
         providerRegistry = DefaultProviderRegistry(listOf(deterministicProvider))
         assertTrue(
             providerRegistry.getAvailableProviders().isNotEmpty(),
-            "Provider registry must not be empty — pipeline verification requires a registered LLM provider"
+            "Provider registry must not be empty"
         )
 
         evaluatorRegistry = DefaultEvaluatorRegistry(listOf(

@@ -158,7 +158,7 @@ class DefaultProviderValidationService(
                 null
             }
             else -> {
-                logger.warn("Cannot validate model '$model' for provider '$provider' - validation not implemented")
+                logger.warn("Cannot validate model '$model' for provider '$provider', validation not implemented")
                 null
             }
         }

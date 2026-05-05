@@ -75,7 +75,7 @@ class OpenRouterLlmProvider(
             logger.debug("OpenRouter request: model=${request.model}, messages=${request.messages.size}")
             val response = httpClient
                 .post()
-                .uri("/v1/chat/completions")
+                .uri("/chat/completions")
                 .bodyValue(request)
                 .retrieve()
                 .awaitBody<OpenAiResponse>()

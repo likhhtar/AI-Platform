@@ -1,5 +1,7 @@
 package ru.yandex.diploma.aiplatform.domain.repository
 
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
 import ru.yandex.diploma.aiplatform.domain.model.*
 
 interface TestConfigurationRepository {
@@ -15,7 +17,8 @@ data class TestConfiguration(
     val metadata: Map<String, Any> = emptyMap(),
     val suiteMetadata: TestSuiteMetadata = TestSuiteMetadata(),
     val executionConfig: ExecutionConfig = ExecutionConfig(),
-    val optimizationConfig: OptimizationConfig? = null
+    val optimizationConfig: OptimizationConfig? = null,
+    val regressionConfiguration: RegressionConfiguration? = null
 ) {
     fun getAgent(name: String): AgentConfig? = agents.find { it.name == name }
     
@@ -50,6 +53,36 @@ data class TestConfiguration(
         errors.addAll(ExecutionModeRules.validate(this))
         
         return errors
+    }
+
+    fun semanticFingerprint(): String {
+        val md = MessageDigest.getInstance("SHA-256")
+        val sb = StringBuilder(512)
+        sb.append("semanticFp:v1\n")
+        for (p in prompts.sortedBy { it.id }) {
+            sb.append("P:").append(p.id).append('\u001e')
+            sb.append("N:").append(p.name).append('\u001e')
+            sb.append("T:").append(p.template).append('\u001e')
+            sb.append("V:")
+            for (vk in p.variables.sorted()) {
+                sb.append(vk).append(';')
+            }
+            sb.append('\n')
+        }
+        val oc = optimizationConfig
+        sb.append("OPT:")
+        if (oc == null || !oc.enabled) {
+            sb.append("disabled\n")
+        } else {
+            sb.append("on|")
+                .append(oc.mode.name).append('|')
+                .append(oc.type.name).append('|')
+                .append(oc.iterations).append('|')
+                .append(oc.plateauScoreEpsilon).append('|')
+                .append(oc.rollbackMedianThreshold).append('\n')
+        }
+        val digest = md.digest(sb.toString().toByteArray(StandardCharsets.UTF_8))
+        return digest.joinToString("") { b -> "%02x".format(b) }
     }
 }
 

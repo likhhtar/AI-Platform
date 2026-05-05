@@ -31,15 +31,15 @@ class LlmJudgeEvaluator(
             {{actual}}
             
             **Evaluation Criteria:**
-            - Correctness: Does the actual answer match the expected answer in meaning and content?
-            - Completeness: Does the actual answer address all aspects of the expected answer?
-            - Quality: Is the actual answer well-structured and clear?
+            Correctness: Does the actual answer match the expected answer in meaning and content?
+            Completeness: Does the actual answer address all aspects of the expected answer?
+            Quality: Is the actual answer well-structured and clear?
             
             **Instructions:**
             1. Provide a score from 0.0 to 1.0 where:
-               - 0.0 = Completely incorrect or irrelevant
-               - 0.5 = Partially correct but missing important elements
-               - 1.0 = Fully correct and complete
+               0.0 = Completely incorrect or irrelevant
+               0.5 = Partially correct but missing important elements
+               1.0 = Fully correct and complete
             
             2. Provide a brief explanation of your evaluation.
             
@@ -131,7 +131,7 @@ class LlmJudgeEvaluator(
         val explanation = explanationLine?.substringAfter(":", "")?.trim()
             ?: lines.drop(1).joinToString(" ").ifBlank { "No explanation provided" }
         
-        val passed = score >= 0.5
+        val passed = score > 0.5
         
         logger.debug("LLM judge evaluation: score=$score, passed=$passed")
         

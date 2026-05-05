@@ -21,9 +21,9 @@ class ExperimentRunner(
     ): ExperimentResult {
         val startTime = System.currentTimeMillis()
         logger.info(
-            "Запуск эксперимента с агентом: ${agentConfig.name}, " +
-            "модель: ${agentConfig.model ?: "default"}, " +
-            "температура: ${agentConfig.temperature}"
+            "Launching the experiment with agent: ${agentConfig.name}, " +
+            "model: ${agentConfig.model ?: "default"}, " +
+            "temperature: ${agentConfig.temperature}"
         )
         
         return try {
@@ -47,21 +47,22 @@ class ExperimentRunner(
             
             val metrics = calculateMetrics(listOf(experimentRun))
             
-            logger.info("Эксперимент успешно завершен за ${executionTimeMs}мс")
+            logger.info("Experiment successfully completed in ${executionTimeMs}ms")
             
             ExperimentResult(
                 agentConfig = agentConfig,
                 runs = listOf(experimentRun),
                 metrics = metrics,
                 executionTimeMs = executionTimeMs,
-                timestamp = Instant.now().toString()
+                timestamp = Instant.now().toString(),
+                configurationSource = configurationSource
             )
             
         } catch (e: Exception) {
             val endTime = System.currentTimeMillis()
             val executionTimeMs = endTime - startTime
             
-            logger.error("Эксперимент не удался для агента: ${agentConfig.name}", e)
+            logger.error("Experiment failed for agent: ${agentConfig.name}", e)
             
             val failedRun = ExperimentRun(
                 agentName = agentConfig.name,
@@ -80,7 +81,8 @@ class ExperimentRunner(
                 runs = listOf(failedRun),
                 metrics = metrics,
                 executionTimeMs = executionTimeMs,
-                timestamp = Instant.now().toString()
+                timestamp = Instant.now().toString(),
+                configurationSource = configurationSource
             )
         }
     }
@@ -90,13 +92,13 @@ class ExperimentRunner(
         agentConfigs: List<AgentConfig>
     ): ExperimentResult = coroutineScope {
         val startTime = System.currentTimeMillis()
-        logger.info("Запуск мульти-агентного эксперимента с ${agentConfigs.size} агентами")
+        logger.info("Starting multi-agent experiment with ${agentConfigs.size} agents")
         
         // Запускаем эксперименты параллельно для каждой конфигурации агента
         val runs = agentConfigs.map { agentConfig ->
             async {
                 try {
-                    logger.debug("Запуск теста для агента: ${agentConfig.name} с моделью: ${agentConfig.model}")
+                    logger.debug("Running test for agent: ${agentConfig.name} with model: ${agentConfig.model}")
                     
                     val result = runTestSuiteUseCase.execute(
                         configurationSource = configurationSource,
@@ -113,7 +115,7 @@ class ExperimentRunner(
                         executionTimeMs = result.executionTimeMs
                     )
                 } catch (e: Exception) {
-                    logger.error("Запуск эксперимента не удался для агента: ${agentConfig.name}", e)
+                    logger.error("Experiment launch failed for agent: ${agentConfig.name}", e)
                     ExperimentRun(
                         agentName = agentConfig.name,
                         model = agentConfig.model ?: "default",
@@ -131,14 +133,15 @@ class ExperimentRunner(
         val executionTimeMs = endTime - startTime
         val metrics = calculateMetrics(runs)
         
-        logger.info("Мульти-агентный эксперимент завершен: ${runs.size} запусков за ${executionTimeMs}мс")
+        logger.info("Multi-agent experiment completed: ${runs.size} runs in ${executionTimeMs}ms")
         
         ExperimentResult(
-            agentConfig = agentConfigs.firstOrNull() ?: AgentConfig.create("multi", "Мульти-агентный эксперимент"),
+            agentConfig = agentConfigs.firstOrNull() ?: AgentConfig.create("multi", "Multi-agent experiment"),
             runs = runs,
             metrics = metrics,
             executionTimeMs = executionTimeMs,
-            timestamp = Instant.now().toString()
+            timestamp = Instant.now().toString(),
+            configurationSource = configurationSource
         )
     }
     
@@ -156,8 +159,13 @@ class ExperimentRunner(
         }
         
         val allResults = successfulRuns.mapNotNull { it.result }
-        val averageLatency = allResults.map { it.executionTimeMs }.average()
-        val averageScore = allResults.flatMap { it.results }.map { it.evaluationResult.score }.average()
+        val averageLatency = allResults.map { it.executionTimeMs }.average().let { avg ->
+            if (avg.isNaN()) 0.0 else avg
+        }
+        val scores = allResults.flatMap { it.results }.map { it.evaluationResult.score }
+        val averageScore = scores.takeUnless { it.isEmpty() }?.average()?.let { avg ->
+            if (avg.isNaN()) 0.0 else avg
+        } ?: 0.0
         
         return ExperimentMetrics(
             totalRuns = runs.size,
@@ -184,7 +192,8 @@ data class ExperimentResult(
     val runs: List<ExperimentRun>,
     val metrics: ExperimentMetrics,
     val executionTimeMs: Long,
-    val timestamp: String
+    val timestamp: String,
+    val configurationSource: String? = null
 )
 
 data class ExperimentMetrics(

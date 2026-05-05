@@ -98,19 +98,8 @@ class DefaultProviderRegistry(
         forbiddenPatterns.forEach { pattern ->
             if (providerClass.contains(pattern, ignoreCase = true)) {
                 throw ProviderRegistrationException("""
-                    🚨 MOCK PROVIDER FORBIDDEN! 🚨
-                    
+                    MOCK PROVIDER FORBIDDEN!
                     Attempted to register MOCK provider: $providerClass (ID: $providerId)
-                    This system MUST use REAL infrastructure only.
-                    
-                    FORBIDDEN PATTERNS: ${forbiddenPatterns.joinToString(", ")}
-                    DETECTED PATTERN: $pattern in $providerClass
-                    
-                    ALLOWED REAL PROVIDERS:
-                    - OpenRouterLlmProvider (openrouter)
-                    - OpenAiLlmProvider (openai)
-                    
-                    ACTION REQUIRED: Remove mock provider usage and use real LLM providers only.
                 """.trimIndent())
             }
         }
@@ -120,32 +109,23 @@ class DefaultProviderRegistry(
             providerId.contains("test", ignoreCase = true)) &&
             providerId != "deterministic") {
             throw ProviderRegistrationException("""
-                🚨 MOCK PROVIDER ID FORBIDDEN! 🚨
-                
+                MOCK PROVIDER ID FORBIDDEN!
                 Provider ID '$providerId' contains forbidden mock pattern.
-                This system MUST use REAL infrastructure only.
-                
-                REAL PROVIDER IDs ALLOWED:
-                - openrouter
-                - openai
-                - deterministic (for testing)
-                
-                ACTION REQUIRED: Use real provider IDs only.
             """.trimIndent())
         }
         
         val realProviderClasses = setOf(
             "OpenRouterLlmProvider",
             "OpenAiLlmProvider",
-            "DeterministicLlmProvider",  // for testing
-            "ValidLlmProvider"  // for unit tests
+            "DeterministicLlmProvider",
+            "ValidLlmProvider"
         )
         
         if (!realProviderClasses.contains(providerClass)) {
-            logger.warn("⚠️ Unknown provider class: $providerClass - ensure it's a real implementation")
+            logger.warn("Unknown provider class: $providerClass - ensure it's a real implementation")
         }
         
-        logger.debug("✅ Validated REAL provider: $providerClass (ID: $providerId)")
+        logger.debug("Validated REAL provider: $providerClass (ID: $providerId)")
     }
     
     private fun validateOnlyRealProvidersRegistered() {
@@ -170,21 +150,12 @@ class DefaultProviderRegistry(
             }.joinToString(", ")
             
             throw ProviderRegistrationException("""
-                🚨 MOCK PROVIDERS DETECTED! 🚨
-                
+                MOCK PROVIDERS DETECTED!
                 Found ${mockProviders.size} mock provider(s): $mockDetails
-                This system MUST use REAL infrastructure only.
-                
-                REAL PROVIDERS AVAILABLE: ${providers.filter { (_, provider) ->
-                    val providerClass = provider::class.java.simpleName
-                    providerClass.contains("OpenRouter") || providerClass.contains("OpenAi")
-                }.keys.joinToString(", ")}
-                
-                ACTION REQUIRED: Remove all mock providers and use real LLM providers only.
             """.trimIndent())
         }
         
-        logger.info("✅ All ${providers.size} registered providers are REAL: ${providers.keys.joinToString(", ")}")
+        logger.info("All ${providers.size} registered providers are REAL: ${providers.keys.joinToString(", ")}")
     }
 }
 

@@ -14,6 +14,7 @@ import ru.yandex.diploma.aiplatform.domain.model.RegressionRule
 import ru.yandex.diploma.aiplatform.domain.model.RegressionSeverity
 import ru.yandex.diploma.aiplatform.domain.model.RegressionStatus
 import ru.yandex.diploma.aiplatform.domain.model.RegressionType
+import ru.yandex.diploma.aiplatform.domain.repository.BaselineLoadResult
 import ru.yandex.diploma.aiplatform.infrastructure.repository.FileBaselineRepository
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -92,7 +93,8 @@ class BaselineSystemIntegrationTest {
         assertNotNull(firstResult.runId)
         assertTrue(firstResult.testRun.results.isNotEmpty())
         assertEquals(RegressionStatus.PASS, firstResult.regressionAnalysis.summary.overallStatus)
-        assertTrue(fileBaselineRepository.loadAll(integrationSuiteId).isNotEmpty())
+        val loaded = fileBaselineRepository.loadAll(integrationSuiteId)
+        assertTrue(loaded is BaselineLoadResult.Loaded && loaded.data.isNotEmpty())
 
         val assertConfig = RegressionConfiguration(
             rules = rules,
@@ -164,7 +166,9 @@ class BaselineSystemIntegrationTest {
             )
         )
 
-        val stored = fileBaselineRepository.loadAll(integrationSuiteId)
+        val storedRaw = fileBaselineRepository.loadAll(integrationSuiteId)
+        assertTrue(storedRaw is BaselineLoadResult.Loaded, "RECORD should persist baselines before ASSERT regression scenario")
+        val stored = (storedRaw as BaselineLoadResult.Loaded).data
         assertTrue(stored.isNotEmpty(), "RECORD should persist baselines before ASSERT regression scenario")
         stored.forEach { (testCaseId, entry) ->
             fileBaselineRepository.saveBaseline(

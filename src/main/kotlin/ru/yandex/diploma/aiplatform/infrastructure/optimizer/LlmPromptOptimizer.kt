@@ -1,344 +1,434 @@
 package ru.yandex.diploma.aiplatform.infrastructure.optimizer
 
+import com.fasterxml.jackson.core.JsonProcessingException
+import com.fasterxml.jackson.databind.DeserializationFeature
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.fasterxml.jackson.module.kotlin.readValue
+import java.net.SocketTimeoutException
+import kotlinx.coroutines.TimeoutCancellationException
 import org.slf4j.LoggerFactory
+import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Component
+import org.springframework.web.reactive.function.client.WebClientRequestException
+import org.springframework.web.reactive.function.client.WebClientResponseException
 import ru.yandex.diploma.aiplatform.domain.model.*
-import ru.yandex.diploma.aiplatform.domain.provider.LlmProvider
+import ru.yandex.diploma.aiplatform.domain.model.extractTemplateVariables
+import ru.yandex.diploma.aiplatform.domain.model.validateTemplatePlaceholderBagPreservation
+import ru.yandex.diploma.aiplatform.domain.provider.LlmProviderException
 import ru.yandex.diploma.aiplatform.domain.provider.ProviderRegistry
-import ru.yandex.diploma.aiplatform.domain.service.PromptOptimizer
 import ru.yandex.diploma.aiplatform.domain.service.PromptOptimizationException
-import java.time.Instant
+import ru.yandex.diploma.aiplatform.domain.service.PromptOptimizer
 
 @Component
 class LlmPromptOptimizer(
-    private val providerRegistry: ProviderRegistry
+    private val providerRegistry: ProviderRegistry,
 ) : PromptOptimizer {
-    
+
     private val logger = LoggerFactory.getLogger(LlmPromptOptimizer::class.java)
-    
+
+    private val jsonMapper =
+        jacksonObjectMapper().apply {
+            configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+            configure(DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT, true)
+        }
+
     override val optimizerType: OptimizerType = OptimizerType.LLM
-    
+
     override suspend fun optimize(input: OptimizationInput, config: OptimizationConfig): OptimizationResult {
         val startTime = System.currentTimeMillis()
-        
-        try {
-            val llmConfig = config.llmConfig 
-                ?: throw PromptOptimizationException("LLM config is required for LLM optimizer", optimizerType = optimizerType)
-            
-            val provider = providerRegistry.getProvider(llmConfig.provider)
-            
-            logger.info("Starting LLM-based prompt optimization for prompt: ${input.originalPrompt.id}")
-            
-            val metaPrompt = buildMetaPrompt(input, config.mode)
-            
-            val llmRequest = LlmRequest(
-                prompt = metaPrompt,
-                model = llmConfig.model,
-                temperature = llmConfig.temperature,
-                maxTokens = llmConfig.maxTokens ?: 2000,
-                topP = null,
-                frequencyPenalty = null,
-                presencePenalty = null,
-                additionalParameters = emptyMap()
-            )
-            
-            val response = provider.generate(llmRequest)
-            val optimizationResponse = parseOptimizationResponse(response.content, config.mode)
-            
-            val executionTime = System.currentTimeMillis() - startTime
-            
-            logger.info("LLM optimization completed in ${executionTime}ms with confidence: ${optimizationResponse.confidence}")
-            
-            return OptimizationResult(
-                originalPrompt = input.originalPrompt,
-                optimizedPrompt = optimizationResponse.optimizedPrompt,
-                suggestions = optimizationResponse.suggestions,
-                confidence = optimizationResponse.confidence,
-                reasoning = optimizationResponse.reasoning,
-                metadata = mapOf(
-                    "provider" to llmConfig.provider,
-                    "model" to llmConfig.model,
-                    "temperature" to llmConfig.temperature,
-                    "mode" to config.mode.name,
-                    "testCasesCount" to input.testCases.size,
-                    "averageScore" to input.testResults.map { it.evaluationResult.score }.average()
-                ),
-                executionTimeMs = executionTime
-            )
-            
-        } catch (e: PromptOptimizationException) {
-            throw e
-        } catch (e: Exception) {
-            val executionTime = System.currentTimeMillis() - startTime
-            logger.error("LLM optimization failed", e)
-            throw PromptOptimizationException(
-                "LLM optimization failed: ${e.message}",
-                cause = e,
-                optimizerType = optimizerType
-            )
+        val llmConfig = config.llmConfig
+            ?: throw PromptOptimizationException("LLM config is required for LLM optimizer", optimizerType = optimizerType)
+        val provider = providerRegistry.getProvider(llmConfig.provider)
+
+        logger.info("LLM prompt optimization starting for promptId=${input.originalPrompt.id}")
+
+        val systemPromptBuilt = buildJsonEnforcerSystemPrompt(llmConfig.systemPrompt)
+
+        var lastError: Exception? = null
+        repeat(MAX_RETRIES) { attempt ->
+            try {
+                val metaPrompt = buildMetaPrompt(input, config.mode, attempt)
+                val temp =
+                    when {
+                        attempt == 0 -> llmConfig.temperature.coerceIn(0.05, 1.0)
+                        else -> (llmConfig.temperature.coerceAtMost(0.3)).coerceAtLeast(0.05)
+                    }
+
+                val raw = provider.generate(
+                    LlmRequest(
+                        prompt = metaPrompt,
+                        systemPrompt = systemPromptBuilt,
+                        model = llmConfig.model,
+                        temperature = temp,
+                        maxTokens = llmConfig.maxTokens ?: 4096,
+                        topP = 0.92,
+                        frequencyPenalty = 0.0,
+                        presencePenalty = 0.0,
+                        additionalParameters = emptyMap(),
+                    ),
+                ).content
+
+                val envelopeDto = deserializeEnvelope(raw)
+                val mapped = mapEnvelopeToOptimizationFields(envelopeDto, raw, input, config.mode).let {
+                    normalizeSuggestionConfidences(it)
+                }
+
+                mapped.optimizedPrompt?.let { finalized ->
+                    if (config.mode == OptimizationMode.APPLY) {
+                        try {
+                            validateTemplatePlaceholderBagPreservation(
+                                input.originalPrompt.template,
+                                finalized.template,
+                            )
+                        } catch (e: IllegalArgumentException) {
+                            throw PromptOptimizationException(
+                                message = e.message ?: "Placeholder multiset mismatch",
+                                cause = e,
+                                optimizerType = optimizerType,
+                            )
+                        }
+                    }
+                }
+
+                return buildOptimizationResult(startTime, input, llmConfig, mapped, raw, config.mode)
+            } catch (e: PromptOptimizationException) {
+                throw e
+            } catch (e: IllegalArgumentException) {
+                throw PromptOptimizationException(
+                    message = e.message ?: "Invalid LLM optimization argument",
+                    cause = e,
+                    optimizerType = optimizerType,
+                )
+            } catch (e: JsonProcessingException) {
+                throw PromptOptimizationException(
+                    message = "Invalid JSON: ${e.message}",
+                    cause = e,
+                    optimizerType = optimizerType,
+                )
+            } catch (e: Exception) {
+                if (!isTransientProviderFailure(e)) {
+                    throw PromptOptimizationException(
+                        message = "LLM optimization failed: ${e.message}",
+                        cause = e,
+                        optimizerType = optimizerType,
+                    )
+                }
+                lastError = e
+                logger.warn(
+                    "LLM optimization attempt ${attempt + 1}/$MAX_RETRIES failed (transient): ${e.javaClass.simpleName}: ${e.message}",
+                    e,
+                )
+            }
         }
+
+        val msg =
+            lastError?.let { "LLM optimization exhausted retries (${it.javaClass.simpleName}: ${it.message})" }
+                ?: "LLM optimization exhausted retries"
+
+        throw PromptOptimizationException(message = msg, cause = lastError, optimizerType = optimizerType)
     }
-    
-    override suspend fun isAvailable(): Boolean {
+
+    private fun deserializeEnvelope(raw: String): LlmOptimizationEnvelopeDto {
+        val clipped =
+            OptimizationJsonExtractions.stripFenceAndExtract(raw)
+                ?: OptimizationJsonExtractions.firstBalancedJsonObject(raw.trim())
+                ?: throw PromptOptimizationException("No JSON object in LLM response", optimizerType = optimizerType)
         return try {
-            providerRegistry.getAvailableProviders().isNotEmpty()
-        } catch (e: Exception) {
-            logger.warn("Failed to check LLM optimizer availability", e)
-            false
+            jsonMapper.readValue<LlmOptimizationEnvelopeDto>(clipped)
+        } catch (_: Exception) {
+            val salvage =
+                OptimizationJsonExtractions.firstBalancedJsonObject(raw.trim())
+                    ?: clipped
+            try {
+                jsonMapper.readValue<LlmOptimizationEnvelopeDto>(salvage)
+            } catch (e: Exception) {
+                throw PromptOptimizationException(
+                    message = "Invalid JSON envelope from LLM: ${e.message}",
+                    cause = e,
+                    optimizerType = optimizerType,
+                )
+            }
         }
     }
-    
-    override fun getConfigurationRequirements(): List<String> {
-        return listOf(
-            "llmConfig.provider - LLM provider name",
-            "llmConfig.model - Model name to use for optimization",
-            "llmConfig.temperature - Temperature for generation (optional, default: 0.3)",
-            "llmConfig.maxTokens - Maximum tokens for response (optional, default: 2000)",
-            "llmConfig.systemPrompt - Custom system prompt (optional)"
+
+    private fun mapEnvelopeToOptimizationFields(
+        dto: LlmOptimizationEnvelopeDto,
+        raw: String,
+        input: OptimizationInput,
+        mode: OptimizationMode,
+    ): MappedOptimizationFields {
+        val suggestions =
+            dto.suggestions.map { suggestionDto ->
+                OptimizationSuggestion(
+                    type =
+                        kotlin.runCatching {
+                            SuggestionType.valueOf(suggestionDto.type?.trim()?.uppercase() ?: "OTHER")
+                        }.getOrDefault(SuggestionType.OTHER),
+                    description = suggestionDto.description.ifBlank { "Suggestion" },
+                    originalText = suggestionDto.originalText?.takeUnless { it.isBlank() },
+                    suggestedText = suggestionDto.suggestedText?.takeUnless { it.isBlank() },
+                    impact = kotlin.runCatching {
+                        SuggestionImpact.valueOf(suggestionDto.impact?.trim()?.uppercase() ?: "MEDIUM")
+                    }.getOrDefault(SuggestionImpact.MEDIUM),
+                    confidence = suggestionDto.confidence?.coerceIn(0.0, 1.0) ?: 0.72,
+                    reasoning = (suggestionDto.reasoning ?: "").ifBlank {
+                        "(no per-suggestion reasoning)"
+                    },
+                )
+            }
+
+        val reasoningOverall =
+            dto.reasoning?.trim()?.takeUnless { it.isBlank() }
+                ?: if (dto.optimizedPrompt != null) {
+                    "Structured optimization (${raw.length} chars)"
+                } else {
+                    "${suggestions.size} structured suggestions (${raw.length} chars)"
+                }
+
+        val envConfidence =
+            dto.confidence?.coerceIn(0.0, 1.0)
+                ?: run {
+                    when {
+                        suggestions.isNotEmpty() -> suggestions.map { it.confidence }.average()
+                        dto.optimizedPrompt != null -> 0.75
+                        else -> 0.5
+                    }
+                }
+
+        val optimizedPrompt =
+            when (mode) {
+                OptimizationMode.SUGGEST -> null
+                OptimizationMode.APPLY -> {
+                    val p =
+                        dto.optimizedPrompt ?: throw PromptOptimizationException(
+                            "optimizedPrompt missing in APPLY mode",
+                            optimizerType = optimizerType,
+                        )
+                    if (p.template.isBlank()) {
+                        throw PromptOptimizationException(
+                            message = "optimizedPrompt.template blank",
+                            optimizerType = optimizerType,
+                        )
+                    }
+                    finalizePromptPreserveId(original = input.originalPrompt, dto = p)
+                }
+            }
+
+        return MappedOptimizationFields(
+            optimizedPrompt = optimizedPrompt,
+            suggestions = suggestions,
+            confidence = envConfidence.coerceIn(0.0, 1.0),
+            reasoning = reasoningOverall,
         )
     }
-    
-    private fun buildMetaPrompt(input: OptimizationInput, mode: OptimizationMode): String {
-        val failedTests = input.testResults.filter { !it.evaluationResult.passed }
-        val lowScoreTests = input.testResults.filter { it.evaluationResult.score < 0.7 }
-        
-        return buildString {
-            appendLine("# Prompt Optimization Task")
-            appendLine()
-            appendLine("You are an expert prompt engineer. Your task is to analyze the given prompt and test results, then provide optimization recommendations.")
-            appendLine()
-            
-            appendLine("## Original Prompt")
-            appendLine("**ID:** ${input.originalPrompt.id}")
-            appendLine("**Name:** ${input.originalPrompt.name}")
-            appendLine("**Template:**")
-            appendLine("```")
+
+    private data class MappedOptimizationFields(
+        val optimizedPrompt: Prompt?,
+        val suggestions: List<OptimizationSuggestion>,
+        val confidence: Double,
+        val reasoning: String,
+    )
+
+    private fun normalizeSuggestionConfidences(fields: MappedOptimizationFields): MappedOptimizationFields =
+        fields.copy(
+            confidence = fields.confidence.coerceIn(0.0, 1.0),
+            suggestions =
+                fields.suggestions.map { s ->
+                    s.copy(confidence = s.confidence.coerceIn(0.0, 1.0))
+                },
+        )
+
+    private fun finalizePromptPreserveId(original: Prompt, dto: LlmOptimizedPromptDto): Prompt {
+        val template = dto.template
+        val vars =
+            extractTemplateVariables(template).ifEmpty { original.variables }
+
+        val name =
+            dto.name?.trim()?.takeUnless { it.isBlank() } ?: "${original.name} (optimized)"
+
+        val id = original.id
+        return Prompt(id = id, name = name, template = template, variables = vars)
+    }
+
+    private fun buildOptimizationResult(
+        startMs: Long,
+        input: OptimizationInput,
+        llmConfig: LlmOptimizerConfig,
+        mapped: MappedOptimizationFields,
+        rawSnippet: String,
+        mode: OptimizationMode,
+    ): OptimizationResult {
+        val executionTimeMs = System.currentTimeMillis() - startMs
+        val provisionalStatus =
+            when (mode) {
+                OptimizationMode.SUGGEST -> OptimizationStatus.SUGGESTED
+                OptimizationMode.APPLY ->
+                    if (mapped.optimizedPrompt != null) {
+                        OptimizationStatus.APPLIED
+                    } else {
+                        OptimizationStatus.FAILED
+                    }
+            }
+        return OptimizationResult(
+            originalPrompt = input.originalPrompt,
+            optimizedPrompt = mapped.optimizedPrompt,
+            suggestions = mapped.suggestions,
+            confidence = mapped.confidence,
+            reasoning = mapped.reasoning,
+            metadata =
+                mapOf(
+                    "provider" to llmConfig.provider,
+                    "model" to llmConfig.model,
+                    "averageScore" to input.testResults.map { it.evaluationResult.score }.average(),
+                    "llmSnippetChars" to rawSnippet.length.coerceAtMost(8192),
+                    "optimizationStatus" to provisionalStatus.name,
+                ),
+            executionTimeMs = executionTimeMs,
+            status = provisionalStatus,
+        )
+    }
+
+    private fun buildJsonEnforcerSystemPrompt(userExtra: String?): String =
+        buildString {
+            appendLine(
+                "You MUST reply with ONLY a single JSON OBJECT (RFC 8259). No prose, no markdown fences, no BOM.",
+            )
+            appendLine(
+                """Escape newline characters INSIDE strings as \n do NOT break JSON validity.""",
+            )
+            appendLine(
+                """In APPLY mode rewrite the FULL template body but NEVER rename, omit, add, or refactor {{placeholder}} identifiers — same multiset of names and occurrence counts as the benchmark ({{x}} twice must stay twice).""",
+            )
+            appendLine(
+                """Do not remove structural sections (numbered lists, output format headings) unless the failure analysis clearly demands a minimal clarification.""",
+            )
+            userExtra?.takeIf { it.isNotBlank() }?.trim()?.also { appendLine(it) }
+        }.trim()
+
+    private fun buildMetaPrompt(input: OptimizationInput, mode: OptimizationMode, attempt: Int): String =
+        buildString {
+            appendLine("# Prompt optimization (${mode})")
+            when (attempt) {
+                1 -> appendLine("(Retry: conform to JSON strictly; placeholders must remain identical.)")
+                else -> {}
+            }
+            if (attempt >= 2) appendLine("(Last-chance retry: fix JSON quoting only copy template placeholders verbatim.)")
+
+            appendLine("## Prompt template `${input.originalPrompt.id}`")
+            appendLine("```txt")
             appendLine(input.originalPrompt.template)
             appendLine("```")
+
+            val varsFromTpl = extractTemplateVariables(input.originalPrompt.template)
+            val canonical =
+                varsFromTpl.ifEmpty { input.originalPrompt.variables }
+            appendLine("## Preserve these template variables verbatim in APPLY mode (same spelling): `${canonical.joinToString()}`")
+
+            appendLine(
+                "## Agent: `${clip(input.agentConfig.name, 80)}`, model=`${input.agentConfig.model ?: "?"}`, t=${input.agentConfig.temperature}",
+            )
+
             appendLine()
-            
-            appendLine("## Agent Configuration")
-            appendLine("**Name:** ${input.agentConfig.name}")
-            appendLine("**Model:** ${input.agentConfig.model ?: "default"}")
-            appendLine("**Temperature:** ${input.agentConfig.temperature}")
-            appendLine("**System Prompt:** ${input.agentConfig.systemPrompt}")
-            appendLine()
-            
-            appendLine("## Test Cases and Results")
-            input.testResults.forEachIndexed { index, result ->
-                appendLine("### Test Case ${index + 1}")
-                appendLine("**Variables:** ${result.testCase.variables}")
-                appendLine("**Expected:** ${result.testCase.expected}")
-                appendLine("**Actual Response:** ${result.llmResponse?.content ?: "N/A"}")
-                appendLine("**Score:** ${result.evaluationResult.score}")
-                appendLine("**Passed:** ${result.evaluationResult.passed}")
-                appendLine("**Evaluation:** ${result.evaluationResult.explanation}")
+            appendLine("## Harness results per test (${input.testResults.size})")
+            appendLine("(Use **expected**, **actual output**, **evaluator rationale** to localize failures.)")
+            input.testResults.forEachIndexed { i, r ->
+                val tc = r.testCase
+                appendLine("### #$i `${tc.promptId}`")
+                appendLine("- **score** ${r.evaluationResult.score}  **passed** ${r.evaluationResult.passed}")
+                appendLine("- **expected (test oracle):**")
+                appendLine(clippedFence(clip(tc.expected, 1800)))
+                appendLine("- **actual (model output):**")
+                appendLine(clippedFence(clip(r.llmResponse?.content ?: "(missing — infrastructure or provider error)", 1800)))
+                appendLine("- **evaluator rationale:**")
+                appendLine(clippedFence(clip(r.evaluationResult.explanation, 1200)))
                 appendLine()
             }
-            
-            if (failedTests.isNotEmpty()) {
-                appendLine("## Failed Tests Analysis")
-                appendLine("${failedTests.size} out of ${input.testResults.size} tests failed.")
-                failedTests.forEach { result ->
-                    appendLine("- **Issue:** ${result.evaluationResult.explanation}")
-                }
-                appendLine()
-            }
-            
-            if (lowScoreTests.isNotEmpty()) {
-                appendLine("## Low Score Tests Analysis")
-                appendLine("${lowScoreTests.size} tests scored below 0.7:")
-                lowScoreTests.forEach { result ->
-                    appendLine("- **Score ${result.evaluationResult.score}:** ${result.evaluationResult.explanation}")
-                }
-                appendLine()
-            }
-            
-            appendLine("## Task")
+
+            appendLine("# JSON schema you MUST obey")
+            appendLine(schemaDescription(mode, attempt))
+        }.trim()
+
+    private fun clip(s: String, max: Int): String =
+        if (s.length <= max) {
+            s
+        } else {
+            "${s.take(max)} … [truncated ${s.length - max} chars]"
+        }
+
+    private fun clippedFence(body: String): String =
+        "```txt\n$body\n```"
+
+    private fun schemaDescription(mode: OptimizationMode, @Suppress("UNUSED_PARAMETER") attempt: Int): String =
+        buildString {
+            appendLine("{")
+            appendLine("  \"confidence\": number (0..1),")
+            appendLine(
+                "  \"reasoning\": string (overall: how failures relate to prompt gaps; cite which tests improved),",
+            )
+            appendLine("  \"suggestions\": [ {")
+            appendLine("       \"type\": \"CLARITY|SPECIFICITY|LENGTH|STRUCTURE|CONTEXT|EXAMPLES|CONSTRAINTS|FORMAT|TONE|OTHER\",")
+            appendLine("       \"description\": string,")
+            appendLine("       \"originalText\": string optional, \"suggestedText\": string optional,")
+            appendLine("       \"impact\": \"LOW|MEDIUM|HIGH|CRITICAL\",")
+            appendLine("       \"confidence\": number 0..1,")
+            appendLine("       \"reasoning\": string")
+            appendLine("  }]")
             when (mode) {
-                OptimizationMode.SUGGEST -> {
-                    appendLine("Provide optimization suggestions for the prompt. Focus on:")
-                    appendLine("1. Improving clarity and specificity")
-                    appendLine("2. Addressing failed test cases")
-                    appendLine("3. Enhancing overall performance")
-                    appendLine()
-                    appendLine("Respond in the following JSON format:")
-                    appendLine("```json")
-                    appendLine("{")
-                    appendLine("  \"suggestions\": [")
-                    appendLine("    {")
-                    appendLine("      \"type\": \"CLARITY|SPECIFICITY|LENGTH|STRUCTURE|CONTEXT|EXAMPLES|CONSTRAINTS|FORMAT|TONE|OTHER\",")
-                    appendLine("      \"description\": \"Description of the suggestion\",")
-                    appendLine("      \"originalText\": \"Text to be changed (if applicable)\",")
-                    appendLine("      \"suggestedText\": \"Suggested replacement text (if applicable)\",")
-                    appendLine("      \"impact\": \"LOW|MEDIUM|HIGH|CRITICAL\",")
-                    appendLine("      \"confidence\": 0.8,")
-                    appendLine("      \"reasoning\": \"Why this suggestion would help\"")
-                    appendLine("    }")
-                    appendLine("  ],")
-                    appendLine("  \"confidence\": 0.8,")
-                    appendLine("  \"reasoning\": \"Overall analysis and reasoning\"")
-                    appendLine("}")
-                    appendLine("```")
-                }
                 OptimizationMode.APPLY -> {
-                    appendLine("Create an improved version of the prompt and provide suggestions. Focus on:")
-                    appendLine("1. Fixing issues identified in failed tests")
-                    appendLine("2. Improving clarity and specificity")
-                    appendLine("3. Maintaining the original intent")
-                    appendLine()
-                    appendLine("Respond in the following JSON format:")
-                    appendLine("```json")
-                    appendLine("{")
+                    appendLine(" ,")
                     appendLine("  \"optimizedPrompt\": {")
-                    appendLine("    \"id\": \"${input.originalPrompt.id}_optimized\",")
-                    appendLine("    \"name\": \"${input.originalPrompt.name} (Optimized)\",")
-                    appendLine("    \"template\": \"Your improved prompt template here\"")
-                    appendLine("  },")
-                    appendLine("  \"suggestions\": [")
-                    appendLine("    {")
-                    appendLine("      \"type\": \"CLARITY|SPECIFICITY|LENGTH|STRUCTURE|CONTEXT|EXAMPLES|CONSTRAINTS|FORMAT|TONE|OTHER\",")
-                    appendLine("      \"description\": \"Description of the change made\",")
-                    appendLine("      \"originalText\": \"Original text\",")
-                    appendLine("      \"suggestedText\": \"New text\",")
-                    appendLine("      \"impact\": \"LOW|MEDIUM|HIGH|CRITICAL\",")
-                    appendLine("      \"confidence\": 0.8,")
-                    appendLine("      \"reasoning\": \"Why this change was made\"")
-                    appendLine("    }")
-                    appendLine("  ],")
-                    appendLine("  \"confidence\": 0.8,")
-                    appendLine("  \"reasoning\": \"Overall analysis and reasoning for the optimization\"")
-                    appendLine("}")
-                    appendLine("```")
+                    appendLine("       \"template\": \"REQUIRED: full rewritten template JSON string\",")
+                    appendLine(
+                        "       \"name\": \"short label optional (prompt id is pinned from YAML)\"",
+                    )
+                    appendLine("  }")
+                    appendLine("  Ignore prompt \"id\" in output — the harness pins the YAML id.")
                 }
+                OptimizationMode.SUGGEST ->
+                    appendLine("  Do NOT include \"optimizedPrompt\".")
             }
-        }
-    }
-    
-    private fun parseOptimizationResponse(content: String, mode: OptimizationMode): ParsedOptimizationResponse {
-        return try {
-            val jsonStart = content.indexOf("{")
-            val jsonEnd = content.lastIndexOf("}") + 1
-            
-            if (jsonStart == -1 || jsonEnd <= jsonStart) {
-                throw IllegalArgumentException("No valid JSON found in response")
+            appendLine("}")
+        }.trim()
+
+    override suspend fun isAvailable(): Boolean =
+        kotlin.runCatching { providerRegistry.getAvailableProviders().isNotEmpty() }.getOrElse { false }
+
+    override fun getConfigurationRequirements(): List<String> =
+        listOf(
+            "llmConfig.provider",
+            "llmConfig.model",
+            "Optional: llmConfig.temperature, llmConfig.maxTokens, llmConfig.systemPrompt",
+        )
+
+    private fun isTransientProviderFailure(e: Throwable): Boolean {
+        var current: Throwable? = e
+        while (current != null) {
+            when (current) {
+                is WebClientResponseException -> {
+                    val code = current.statusCode.value()
+                    return code == HttpStatus.TOO_MANY_REQUESTS.value() ||
+                        code == HttpStatus.REQUEST_TIMEOUT.value() ||
+                        code in 500..599
+                }
+                is WebClientRequestException -> return true
+                is SocketTimeoutException -> return true
+                is java.net.ConnectException -> return true
+                is TimeoutCancellationException -> return true
             }
-            
-            val jsonContent = content.substring(jsonStart, jsonEnd)
-            
-            val suggestions = extractSuggestions(jsonContent)
-            val confidence = extractConfidence(jsonContent)
-            val reasoning = extractReasoning(jsonContent)
-            val optimizedPrompt = if (mode == OptimizationMode.APPLY) {
-                extractOptimizedPrompt(jsonContent)
-            } else null
-            
-            ParsedOptimizationResponse(
-                optimizedPrompt = optimizedPrompt,
-                suggestions = suggestions,
-                confidence = confidence,
-                reasoning = reasoning
-            )
-            
-        } catch (e: Exception) {
-            logger.warn("Failed to parse optimization response, using fallback", e)
-            
-            ParsedOptimizationResponse(
-                optimizedPrompt = null,
-                suggestions = listOf(
-                    OptimizationSuggestion(
-                        type = SuggestionType.OTHER,
-                        description = "LLM provided general optimization advice",
-                        originalText = null,
-                        suggestedText = null,
-                        impact = SuggestionImpact.MEDIUM,
-                        confidence = 0.5,
-                        reasoning = content.take(500)
-                    )
-                ),
-                confidence = 0.5,
-                reasoning = "Failed to parse structured response: ${e.message}"
-            )
+            current = current.cause
         }
+        if (e is LlmProviderException) {
+            val msg = e.message?.lowercase().orEmpty()
+            return msg.contains("rate limit") ||
+                msg.contains("try again later") ||
+                msg.contains("server error") ||
+                msg.contains("timeout") ||
+                msg.contains("timed out")
+        }
+        return false
     }
-    
-    private fun extractSuggestions(jsonContent: String): List<OptimizationSuggestion> {
-        val suggestions = mutableListOf<OptimizationSuggestion>()
-        
-        try {
-            val suggestionsMatch = Regex("\"suggestions\"\\s*:\\s*\\[(.*?)\\]", RegexOption.DOT_MATCHES_ALL)
-                .find(jsonContent)
-            
-            if (suggestionsMatch != null) {
-                suggestions.add(
-                    OptimizationSuggestion(
-                        type = SuggestionType.OTHER,
-                        description = "LLM-generated optimization suggestion",
-                        originalText = null,
-                        suggestedText = null,
-                        impact = SuggestionImpact.MEDIUM,
-                        confidence = 0.7,
-                        reasoning = "Extracted from LLM response"
-                    )
-                )
-            }
-        } catch (e: Exception) {
-            logger.warn("Failed to extract suggestions", e)
-        }
-        
-        return suggestions
-    }
-    
-    private fun extractConfidence(jsonContent: String): Double {
-        return try {
-            val confidenceMatch = Regex("\"confidence\"\\s*:\\s*([0-9.]+)").find(jsonContent)
-            confidenceMatch?.groupValues?.get(1)?.toDouble() ?: 0.7
-        } catch (e: Exception) {
-            0.7
-        }
-    }
-    
-    private fun extractReasoning(jsonContent: String): String {
-        return try {
-            val reasoningMatch = Regex("\"reasoning\"\\s*:\\s*\"([^\"]+)\"").find(jsonContent)
-            reasoningMatch?.groupValues?.get(1) ?: "LLM-based optimization analysis"
-        } catch (e: Exception) {
-            "LLM-based optimization analysis"
-        }
-    }
-    
-    private fun extractOptimizedPrompt(jsonContent: String): Prompt? {
-        return try {
-            val templateMatch = Regex("\"template\"\\s*:\\s*\"([^\"]+)\"").find(jsonContent)
-            val template = templateMatch?.groupValues?.get(1)
-            
-            if (template != null) {
-                Prompt(
-                    id = "optimized_prompt",
-                    name = "Optimized Prompt",
-                    template = template,
-                    variables = extractVariablesFromTemplate(template)
-                )
-            } else null
-        } catch (e: Exception) {
-            logger.warn("Failed to extract optimized prompt", e)
-            null
-        }
-    }
-    
-    private fun extractVariablesFromTemplate(template: String): Set<String> {
-        val variables = mutableSetOf<String>()
-        val pattern = Regex("\\{\\{(\\w+)\\}\\}")
-        pattern.findAll(template).forEach { match ->
-            variables.add(match.groupValues[1])
-        }
-        return variables
+
+    companion object {
+        private const val MAX_RETRIES = 5
     }
 }
-
-private data class ParsedOptimizationResponse(
-    val optimizedPrompt: Prompt?,
-    val suggestions: List<OptimizationSuggestion>,
-    val confidence: Double,
-    val reasoning: String
-)

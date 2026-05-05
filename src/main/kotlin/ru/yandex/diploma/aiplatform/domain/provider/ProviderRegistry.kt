@@ -14,11 +14,11 @@ interface ProviderRegistry {
 
 class ProviderNotFoundException(
     val providerId: String,
-    message: String = "Провайдер не найден: $providerId"
+    message: String = "Provider not found: $providerId"
 ) : Exception(message)
 
 class ProviderRegistrationException(
     val providerId: String,
-    message: String = "Не удалось зарегистрировать провайдер: $providerId",
+    message: String = "Failed to register provider: $providerId",
     cause: Throwable? = null
 ) : Exception(message, cause)
