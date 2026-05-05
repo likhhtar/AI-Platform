@@ -3,12 +3,14 @@ package ru.yandex.diploma.aiplatform.infrastructure.service
 import org.springframework.context.annotation.Primary
 import org.springframework.stereotype.Service
 import ru.yandex.diploma.aiplatform.application.usecase.ExperimentResult
+import ru.yandex.diploma.aiplatform.application.usecase.QAVerdict
 import ru.yandex.diploma.aiplatform.application.usecase.TestSuiteResult
 import ru.yandex.diploma.aiplatform.domain.model.*
 import ru.yandex.diploma.aiplatform.domain.service.ReportGenerator
 import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 @Service
 @Primary
@@ -19,7 +21,7 @@ class QAVerificationHtmlReportGenerator : ReportGenerator {
         val fileName = "qa-verification-report-$timestamp.html"
         val file = File("reports/$fileName")
         
-        val htmlContent = buildStandardHtmlReport(result)
+        val htmlContent = buildStandardHtmlReport(result, testSuiteName)
         file.parentFile?.mkdirs()
         file.writeText(htmlContent)
         return file
@@ -43,11 +45,11 @@ class QAVerificationHtmlReportGenerator : ReportGenerator {
     private fun buildQAVerificationHtmlReport(result: ExtendedOptimizationExperimentResult): String {
         return """
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QA Verification Report - Prompt Optimization</title>
+    <title>Отчёт QA-верификации — оптимизация промптов</title>
     <style>
         ${getEnhancedStyles()}
     </style>
@@ -58,11 +60,11 @@ class QAVerificationHtmlReportGenerator : ReportGenerator {
 <body>
     <div class="container">
         <header class="header">
-            <h1>🔍 QA Verification Report</h1>
-            <div class="subtitle">Prompt Optimization Analysis & Verification</div>
-            <div class="timestamp">Generated: ${result.timestamp}</div>
+            <h1>🔍 Отчёт QA-верификации</h1>
+            <div class="subtitle">Анализ и верификация результатов оптимизации промптов</div>
+            <div class="timestamp">Сформирован: ${result.timestamp}</div>
             <div class="verification-status ${result.qaVerification.verificationStatus.name.lowercase()}">
-                ${getStatusIcon(result.qaVerification.verificationStatus)} ${result.qaVerification.verificationStatus.name}
+                ${getStatusIcon(result.qaVerification.verificationStatus)} ${ruVerificationStatus(result.qaVerification.verificationStatus)}
             </div>
         </header>
 
@@ -83,7 +85,7 @@ class QAVerificationHtmlReportGenerator : ReportGenerator {
         ${buildRecommendationsSection(result.qaVerification)}
         
         <footer class="footer">
-            <p>QA Verification Report • AI Platform • ${result.timestamp}</p>
+            <p>Отчёт QA-верификации • AI Platform • ${result.timestamp}</p>
         </footer>
     </div>
 </body>
@@ -97,47 +99,47 @@ class QAVerificationHtmlReportGenerator : ReportGenerator {
         
         return """
         <section class="section executive-summary">
-            <h2>📊 Executive Summary</h2>
+            <h2>📊 Краткая сводка</h2>
             <div class="summary-grid">
                 <div class="summary-card ${if (qa.isLegitimate) "success" else "danger"}">
                     <div class="card-icon">${if (qa.isLegitimate) "✅" else "❌"}</div>
-                    <div class="card-title">Verification Status</div>
-                    <div class="card-value">${if (qa.isLegitimate) "LEGITIMATE" else "SUSPICIOUS"}</div>
+                    <div class="card-title">Статус верификации</div>
+                    <div class="card-value">${if (qa.isLegitimate) "НАДЁЖНО" else "ПОДОЗРИТЕЛЬНО"}</div>
                 </div>
                 
                 <div class="summary-card ${getAccuracyClass(metrics.optimizedAccuracy)}">
                     <div class="card-icon">🎯</div>
-                    <div class="card-title">Overall Accuracy</div>
+                    <div class="card-title">Общая точность</div>
                     <div class="card-value">${String.format("%.1f", metrics.optimizedAccuracy * 100)}%</div>
-                    <div class="card-subtitle">vs ${String.format("%.1f", metrics.baselineAccuracy * 100)}% baseline</div>
+                    <div class="card-subtitle">базовая: ${String.format("%.1f", metrics.baselineAccuracy * 100)}%</div>
                 </div>
                 
                 <div class="summary-card ${getGeneralizationClass(metrics.generalizationScore)}">
                     <div class="card-icon">🌐</div>
-                    <div class="card-title">Generalization Score</div>
+                    <div class="card-title">Обобщение</div>
                     <div class="card-value">${String.format("%.1f", metrics.generalizationScore * 100)}%</div>
-                    <div class="card-subtitle">Cross-domain performance</div>
+                    <div class="card-subtitle">качество вне домена обучения</div>
                 </div>
                 
                 <div class="summary-card ${getRedFlagClass(qa.redFlags.size)}">
                     <div class="card-icon">🚩</div>
-                    <div class="card-title">Red Flags</div>
+                    <div class="card-title">Красные флаги</div>
                     <div class="card-value">${qa.redFlags.size}</div>
-                    <div class="card-subtitle">${qa.redFlags.count { it.severity == Severity.CRITICAL }} critical</div>
+                    <div class="card-subtitle">из них критических: ${qa.redFlags.count { it.severity == Severity.CRITICAL }}</div>
                 </div>
                 
                 <div class="summary-card ${getConsistencyClass(metrics.consistencyScore)}">
                     <div class="card-icon">📈</div>
-                    <div class="card-title">Consistency Score</div>
+                    <div class="card-title">Согласованность</div>
                     <div class="card-value">${String.format("%.1f", metrics.consistencyScore * 100)}%</div>
-                    <div class="card-subtitle">Cross-category stability</div>
+                    <div class="card-subtitle">стабильность по категориям тестов</div>
                 </div>
                 
                 <div class="summary-card info">
                     <div class="card-icon">⏱️</div>
-                    <div class="card-title">Execution Time</div>
-                    <div class="card-value">${result.executionTimeMs}ms</div>
-                    <div class="card-subtitle">Total processing time</div>
+                    <div class="card-title">Время выполнения</div>
+                    <div class="card-value">${result.executionTimeMs} ms</div>
+                    <div class="card-subtitle">полное время обработки</div>
                 </div>
             </div>
         </section>
@@ -148,11 +150,11 @@ class QAVerificationHtmlReportGenerator : ReportGenerator {
         if (qaVerification.redFlags.isEmpty()) {
             return """
             <section class="section red-flags-section">
-                <h2>🚩 Red Flags Analysis</h2>
+                <h2>🚩 Анализ красных флагов</h2>
                 <div class="no-red-flags">
                     <div class="success-icon">✅</div>
-                    <h3>No Red Flags Detected</h3>
-                    <p>The optimization appears to be legitimate with no suspicious patterns detected.</p>
+                    <h3>Красные флаги не обнаружены</h3>
+                    <p>Оптимизация выглядит обоснованной, подозрительных паттернов не найдено.</p>
                 </div>
             </section>
             """
@@ -162,12 +164,12 @@ class QAVerificationHtmlReportGenerator : ReportGenerator {
         
         return """
         <section class="section red-flags-section">
-            <h2>🚩 Red Flags Analysis</h2>
+            <h2>🚩 Анализ красных флагов</h2>
             <div class="red-flags-summary">
-                <div class="flags-count critical">${flagsByCategory[Severity.CRITICAL]?.size ?: 0} Critical</div>
-                <div class="flags-count high">${flagsByCategory[Severity.HIGH]?.size ?: 0} High</div>
-                <div class="flags-count medium">${flagsByCategory[Severity.MEDIUM]?.size ?: 0} Medium</div>
-                <div class="flags-count low">${flagsByCategory[Severity.LOW]?.size ?: 0} Low</div>
+                <div class="flags-count critical">${flagsByCategory[Severity.CRITICAL]?.size ?: 0} критических</div>
+                <div class="flags-count high">${flagsByCategory[Severity.HIGH]?.size ?: 0} высокого уровня</div>
+                <div class="flags-count medium">${flagsByCategory[Severity.MEDIUM]?.size ?: 0} среднего</div>
+                <div class="flags-count low">${flagsByCategory[Severity.LOW]?.size ?: 0} низкого</div>
             </div>
             
             <div class="red-flags-list">
@@ -177,22 +179,22 @@ class QAVerificationHtmlReportGenerator : ReportGenerator {
                         <div class="flag-header">
                             <div class="flag-icon">${getSeverityIcon(flag.severity)}</div>
                             <div class="flag-content">
-                                <div class="flag-title">${flag.type.name.replace("_", " ")}</div>
+                                <div class="flag-title">${ruRedFlagType(flag.type)}</div>
                                 <div class="flag-description">${escapeHtml(flag.description)}</div>
                             </div>
                             <div class="flag-severity">
-                                <span class="severity-badge ${flag.severity.name.lowercase()}">${flag.severity.name}</span>
+                                <span class="severity-badge ${flag.severity.name.lowercase()}">${ruSeverity(flag.severity)}</span>
                                 <span class="confidence-badge">${String.format("%.0f", flag.confidence * 100)}%</span>
                             </div>
                             <div class="expand-icon">▼</div>
                         </div>
                         <div class="flag-details" style="display: none;">
                             <div class="detail-section">
-                                <strong>Evidence:</strong>
+                                <strong>Доказательства:</strong>
                                 <div class="evidence-text">${escapeHtml(flag.evidence)}</div>
                             </div>
                             <div class="detail-section">
-                                <strong>Recommendation:</strong>
+                                <strong>Рекомендация:</strong>
                                 <div class="recommendation-text">${escapeHtml(flag.recommendation)}</div>
                             </div>
                         </div>
@@ -207,42 +209,42 @@ class QAVerificationHtmlReportGenerator : ReportGenerator {
     private fun buildQAMetricsSection(metrics: QAVerificationMetrics): String {
         return """
         <section class="section qa-metrics-section">
-            <h2>📊 QA Verification Metrics</h2>
+            <h2>📊 Метрики QA-верификации</h2>
             
             <div class="metrics-comparison">
                 <div class="comparison-chart">
-                    <h3>Performance Comparison</h3>
+                    <h3>Сравнение по метрикам</h3>
                     <div class="chart-container">
                         <div class="metric-bar">
-                            <div class="metric-label">Baseline</div>
+                            <div class="metric-label">Базовая</div>
                             <div class="bar-container">
                                 <div class="bar baseline" style="width: ${metrics.baselineAccuracy * 100}%"></div>
                                 <span class="bar-value">${String.format("%.1f", metrics.baselineAccuracy * 100)}%</span>
                             </div>
                         </div>
                         <div class="metric-bar">
-                            <div class="metric-label">Optimized</div>
+                            <div class="metric-label">Оптимизированная</div>
                             <div class="bar-container">
                                 <div class="bar optimized" style="width: ${metrics.optimizedAccuracy * 100}%"></div>
                                 <span class="bar-value">${String.format("%.1f", metrics.optimizedAccuracy * 100)}%</span>
                             </div>
                         </div>
                         <div class="metric-bar">
-                            <div class="metric-label">Paraphrases</div>
+                            <div class="metric-label">Перефразы</div>
                             <div class="bar-container">
                                 <div class="bar paraphrase" style="width: ${metrics.paraphraseAccuracy * 100}%"></div>
                                 <span class="bar-value">${String.format("%.1f", metrics.paraphraseAccuracy * 100)}%</span>
                             </div>
                         </div>
                         <div class="metric-bar">
-                            <div class="metric-label">Trap Cases</div>
+                            <div class="metric-label">Ловушки</div>
                             <div class="bar-container">
                                 <div class="bar trap" style="width: ${metrics.trapAccuracy * 100}%"></div>
                                 <span class="bar-value">${String.format("%.1f", metrics.trapAccuracy * 100)}%</span>
                             </div>
                         </div>
                         <div class="metric-bar">
-                            <div class="metric-label">Unseen Domains</div>
+                            <div class="metric-label">Новые домены</div>
                             <div class="bar-container">
                                 <div class="bar unseen" style="width: ${metrics.unseenAccuracy * 100}%"></div>
                                 <span class="bar-value">${String.format("%.1f", metrics.unseenAccuracy * 100)}%</span>
@@ -252,26 +254,26 @@ class QAVerificationHtmlReportGenerator : ReportGenerator {
                 </div>
                 
                 <div class="key-indicators">
-                    <h3>Key Indicators</h3>
+                    <h3>Ключевые индикаторы</h3>
                     <div class="indicators-grid">
                         <div class="indicator ${if (metrics.performanceDropOnUnseen < 0.2) "good" else "warning"}">
                             <div class="indicator-icon">${if (metrics.performanceDropOnUnseen < 0.2) "✅" else "⚠️"}</div>
-                            <div class="indicator-label">Unseen Drop</div>
+                            <div class="indicator-label">Падение на unseen</div>
                             <div class="indicator-value">${String.format("%.1f", metrics.performanceDropOnUnseen * 100)}%</div>
                         </div>
                         <div class="indicator ${if (metrics.consistencyScore > 0.7) "good" else "warning"}">
                             <div class="indicator-icon">${if (metrics.consistencyScore > 0.7) "✅" else "⚠️"}</div>
-                            <div class="indicator-label">Consistency</div>
+                            <div class="indicator-label">Согласованность</div>
                             <div class="indicator-value">${String.format("%.1f", metrics.consistencyScore * 100)}%</div>
                         </div>
                         <div class="indicator ${if (metrics.trapAccuracy < 0.5) "good" else "danger"}">
                             <div class="indicator-icon">${if (metrics.trapAccuracy < 0.5) "✅" else "❌"}</div>
-                            <div class="indicator-label">Trap Accuracy</div>
+                            <div class="indicator-label">Точность на ловушках</div>
                             <div class="indicator-value">${String.format("%.1f", metrics.trapAccuracy * 100)}%</div>
                         </div>
                         <div class="indicator ${if (metrics.suspiciousPatternCount == 0) "good" else "warning"}">
                             <div class="indicator-icon">${if (metrics.suspiciousPatternCount == 0) "✅" else "⚠️"}</div>
-                            <div class="indicator-label">Suspicious Patterns</div>
+                            <div class="indicator-label">Подозрительные паттерны</div>
                             <div class="indicator-value">${metrics.suspiciousPatternCount}</div>
                         </div>
                     </div>
@@ -287,17 +289,17 @@ class QAVerificationHtmlReportGenerator : ReportGenerator {
         
         return """
         <section class="section prompt-comparison-section">
-            <h2>🔄 Prompt Comparison</h2>
+            <h2>🔄 Сравнение промптов</h2>
             <div class="prompt-comparison">
                 <div class="prompt-box original">
                     <div class="prompt-header">
-                        <h3>Original Prompt</h3>
-                        <span class="prompt-badge original">BASELINE</span>
+                        <h3>Исходный промпт</h3>
+                        <span class="prompt-badge original">БАЗОВЫЙ</span>
                     </div>
                     <div class="prompt-content">
                         <div class="prompt-meta">
                             <span><strong>ID:</strong> ${original.id}</span>
-                            <span><strong>Variables:</strong> ${original.variables.size}</span>
+                            <span><strong>Переменные:</strong> ${original.variables.size}</span>
                         </div>
                         <div class="prompt-template">
                             <pre><code>${escapeHtml(original.template)}</code></pre>
@@ -308,13 +310,13 @@ class QAVerificationHtmlReportGenerator : ReportGenerator {
                 ${if (optimized != null) """
                 <div class="prompt-box optimized">
                     <div class="prompt-header">
-                        <h3>Optimized Prompt</h3>
-                        <span class="prompt-badge optimized">OPTIMIZED</span>
+                        <h3>Оптимизированный промпт</h3>
+                        <span class="prompt-badge optimized">ОПТИМИЗИРОВАНО</span>
                     </div>
                     <div class="prompt-content">
                         <div class="prompt-meta">
                             <span><strong>ID:</strong> ${optimized.id}</span>
-                            <span><strong>Variables:</strong> ${optimized.variables.size}</span>
+                            <span><strong>Переменные:</strong> ${optimized.variables.size}</span>
                         </div>
                         <div class="prompt-template">
                             <pre><code>${escapeHtml(optimized.template)}</code></pre>
@@ -324,13 +326,12 @@ class QAVerificationHtmlReportGenerator : ReportGenerator {
                 """ else """
                 <div class="prompt-box no-optimization">
                     <div class="prompt-header">
-                        <h3>No Optimized Prompt</h3>
-                        <span class="prompt-badge suggest">SUGGEST MODE</span>
+                        <h3>Оптимизированный промпт не создан</h3>
+                        <span class="prompt-badge suggest">РЕЖИМ ПРЕДЛОЖЕНИЙ</span>
                     </div>
                     <div class="prompt-content">
                         <p class="no-optimization-text">
-                            Optimization was run in "suggest" mode. 
-                            See recommendations below for improvement suggestions.
+                            Запуск был в режиме предложений (suggest): готовый оптимизированный промпт не применялся — см. блок рекомендаций ниже.
                         </p>
                     </div>
                 </div>
@@ -343,32 +344,32 @@ class QAVerificationHtmlReportGenerator : ReportGenerator {
     private fun buildCategoryBreakdownSection(categoryBreakdown: Map<String, CategoryMetrics>): String {
         return """
         <section class="section category-breakdown-section">
-            <h2>📋 Test Category Analysis</h2>
+            <h2>📋 Анализ по категориям тестов</h2>
             <div class="category-grid">
                 ${categoryBreakdown.map { (category, metrics) ->
                     """
                     <div class="category-card ${metrics.status.name.lowercase()}">
                         <div class="category-header">
-                            <h3>${category.replaceFirstChar { it.uppercase() }}</h3>
+                            <h3>${ruTestCategory(category)}</h3>
                             <span class="category-status ${metrics.status.name.lowercase()}">
-                                ${getCategoryStatusIcon(metrics.status)} ${metrics.status.name}
+                                ${getCategoryStatusIcon(metrics.status)} ${ruCategoryStatus(metrics.status)}
                             </span>
                         </div>
                         <div class="category-metrics">
                             <div class="metric-row">
-                                <span class="metric-label">Tests:</span>
+                                <span class="metric-label">Тестов:</span>
                                 <span class="metric-value">${metrics.testCount}</span>
                             </div>
                             <div class="metric-row">
-                                <span class="metric-label">Baseline:</span>
+                                <span class="metric-label">Базовая:</span>
                                 <span class="metric-value">${String.format("%.1f", metrics.baselineAccuracy * 100)}%</span>
                             </div>
                             <div class="metric-row">
-                                <span class="metric-label">Optimized:</span>
+                                <span class="metric-label">Оптимизация:</span>
                                 <span class="metric-value">${String.format("%.1f", metrics.optimizedAccuracy * 100)}%</span>
                             </div>
                             <div class="metric-row improvement">
-                                <span class="metric-label">Improvement:</span>
+                                <span class="metric-label">Прирост:</span>
                                 <span class="metric-value ${if (metrics.improvement >= 0) "positive" else "negative"}">
                                     ${if (metrics.improvement >= 0) "+" else ""}${String.format("%.1f", metrics.improvement * 100)}%
                                 </span>
@@ -387,46 +388,46 @@ class QAVerificationHtmlReportGenerator : ReportGenerator {
         
         return """
         <section class="section optimization-details-section">
-            <h2>💡 Optimization Details</h2>
+            <h2>💡 Детали оптимизации</h2>
             
             <div class="optimization-summary">
                 <div class="summary-item">
-                    <strong>Optimizer Type:</strong> ${result.config.type.name}
+                    <strong>Тип оптимизатора:</strong> ${ruOptimizerType(result.config.type)}
                 </div>
                 <div class="summary-item">
-                    <strong>Mode:</strong> ${result.config.mode.name}
+                    <strong>Режим:</strong> ${ruOptimizationMode(result.config.mode)}
                 </div>
                 <div class="summary-item">
-                    <strong>Confidence:</strong> ${String.format("%.1f", optimizationResult.confidence * 100)}%
+                    <strong>Уверенность:</strong> ${String.format("%.1f", optimizationResult.confidence * 100)}%
                 </div>
                 <div class="summary-item">
-                    <strong>Execution Time:</strong> ${optimizationResult.executionTimeMs}ms
+                    <strong>Время выполнения:</strong> ${optimizationResult.executionTimeMs} ms
                 </div>
             </div>
             
             <div class="optimization-reasoning">
-                <h3>Reasoning</h3>
+                <h3>Обоснование</h3>
                 <div class="reasoning-text">${escapeHtml(optimizationResult.reasoning)}</div>
             </div>
             
             <div class="optimization-suggestions">
-                <h3>Suggestions (${optimizationResult.suggestions.size})</h3>
+                <h3>Предложения (${optimizationResult.suggestions.size})</h3>
                 <div class="suggestions-list">
                     ${optimizationResult.suggestions.map { suggestion ->
                         """
                         <div class="suggestion-item ${suggestion.impact.name.lowercase()}">
                             <div class="suggestion-header">
-                                <span class="suggestion-type">${suggestion.type.name}</span>
-                                <span class="suggestion-impact ${suggestion.impact.name.lowercase()}">${suggestion.impact.name}</span>
+                                <span class="suggestion-type">${ruSuggestionType(suggestion.type)}</span>
+                                <span class="suggestion-impact ${suggestion.impact.name.lowercase()}">${ruSuggestionImpact(suggestion.impact)}</span>
                             </div>
                             <div class="suggestion-description">${escapeHtml(suggestion.description)}</div>
                             ${if (suggestion.originalText != null && suggestion.suggestedText != null) """
                             <div class="suggestion-change">
                                 <div class="change-from">
-                                    <strong>From:</strong> <code>${escapeHtml(suggestion.originalText)}</code>
+                                    <strong>Было:</strong> <code>${escapeHtml(suggestion.originalText)}</code>
                                 </div>
                                 <div class="change-to">
-                                    <strong>To:</strong> <code>${escapeHtml(suggestion.suggestedText)}</code>
+                                    <strong>Стало:</strong> <code>${escapeHtml(suggestion.suggestedText)}</code>
                                 </div>
                             </div>
                             """ else ""}
@@ -447,42 +448,42 @@ class QAVerificationHtmlReportGenerator : ReportGenerator {
         
         return """
         <section class="section performance-comparison-section">
-            <h2>📈 Performance Comparison</h2>
+            <h2>📈 Сравнение производительности</h2>
             
             <div class="performance-grid">
                 <div class="performance-card">
-                    <h3>Baseline Performance</h3>
+                    <h3>Базовая конфигурация</h3>
                     <div class="performance-metrics">
                         <div class="metric">
-                            <span class="metric-label">Average Score:</span>
+                            <span class="metric-label">Средняя оценка:</span>
                             <span class="metric-value">${baseline.averageScore}</span>
                         </div>
                         <div class="metric">
-                            <span class="metric-label">Success Rate:</span>
+                            <span class="metric-label">Доля успеха:</span>
                             <span class="metric-value">${if (baseline.totalRuns > 0) (baseline.successfulRuns.toDouble() / baseline.totalRuns * 100).toInt() else 0}%</span>
                         </div>
                         <div class="metric">
-                            <span class="metric-label">Average Latency:</span>
-                            <span class="metric-value">${baseline.averageLatency}ms</span>
+                            <span class="metric-label">Средняя задержка:</span>
+                            <span class="metric-value">${baseline.averageLatency} ms</span>
                         </div>
                     </div>
                 </div>
                 
                 ${if (optimized != null) """
                 <div class="performance-card optimized">
-                    <h3>Optimized Performance</h3>
+                    <h3>После оптимизации</h3>
                     <div class="performance-metrics">
                         <div class="metric">
-                            <span class="metric-label">Average Score:</span>
+                            <span class="metric-label">Средняя оценка:</span>
                             <span class="metric-value">${optimized.averageScore}</span>
                         </div>
                         <div class="metric">
-                            <span class="metric-label">Success Rate:</span>
+                            <span class="metric-label">Доля успеха:</span>
                             <span class="metric-value">${if (optimized.totalRuns > 0) (optimized.successfulRuns.toDouble() / optimized.totalRuns * 100).toInt() else 0}%</span>
                         </div>
                         <div class="metric">
-                            <span class="metric-label">Average Latency:</span>
-                            <span class="metric-value">${optimized.averageLatency}ms</span>
+                            <span class="metric-label">Средняя задержка:</span>
+                            <span class="metric-value">${optimized.averageLatency} ms</span>
                         </div>
                     </div>
                 </div>
@@ -490,24 +491,24 @@ class QAVerificationHtmlReportGenerator : ReportGenerator {
                 
                 ${if (improvement != null) """
                 <div class="performance-card improvement">
-                    <h3>Improvement Analysis</h3>
+                    <h3>Изменение метрик</h3>
                     <div class="performance-metrics">
                         <div class="metric">
-                            <span class="metric-label">Score Change:</span>
+                            <span class="metric-label">Изменение оценки:</span>
                             <span class="metric-value ${if (improvement.scoreImprovement >= 0) "positive" else "negative"}">
                                 ${if (improvement.scoreImprovement >= 0) "+" else ""}${String.format("%.3f", improvement.scoreImprovement)}
                             </span>
                         </div>
                         <div class="metric">
-                            <span class="metric-label">Pass Rate Change:</span>
+                            <span class="metric-label">Изменение успешности:</span>
                             <span class="metric-value ${if (improvement.passRateImprovement >= 0) "positive" else "negative"}">
                                 ${if (improvement.passRateImprovement >= 0) "+" else ""}${String.format("%.1f", improvement.passRateImprovement * 100)}%
                             </span>
                         </div>
                         <div class="metric">
-                            <span class="metric-label">Significant:</span>
+                            <span class="metric-label">Значимо:</span>
                             <span class="metric-value ${if (improvement.significantImprovement) "positive" else "neutral"}">
-                                ${if (improvement.significantImprovement) "Yes" else "No"}
+                                ${if (improvement.significantImprovement) "Да" else "Нет"}
                             </span>
                         </div>
                     </div>
@@ -521,18 +522,18 @@ class QAVerificationHtmlReportGenerator : ReportGenerator {
     private fun buildRecommendationsSection(qaVerification: QAVerificationResult): String {
         return """
         <section class="section recommendations-section">
-            <h2>💡 Recommendations</h2>
+            <h2>💡 Рекомендации</h2>
             <div class="recommendation-content">
                 <div class="recommendation-status ${qaVerification.verificationStatus.name.lowercase()}">
                     <div class="status-icon">${getStatusIcon(qaVerification.verificationStatus)}</div>
                     <div class="status-text">
-                        <h3>${qaVerification.verificationStatus.name} Optimization</h3>
+                        <h3>Оптимизация — ${ruVerificationStatus(qaVerification.verificationStatus)}</h3>
                         <p>${getStatusDescription(qaVerification.verificationStatus)}</p>
                     </div>
                 </div>
                 
                 <div class="recommendation-text">
-                    <h3>Detailed Recommendations</h3>
+                    <h3>Подробные рекомендации</h3>
                     <div class="recommendation-body">
                         ${escapeHtml(qaVerification.recommendation).replace("\n", "<br>")}
                     </div>
@@ -540,22 +541,22 @@ class QAVerificationHtmlReportGenerator : ReportGenerator {
                 
                 ${if (qaVerification.redFlags.isNotEmpty()) """
                 <div class="next-steps">
-                    <h3>Next Steps</h3>
+                    <h3>Следующие шаги</h3>
                     <ul>
                         ${if (qaVerification.redFlags.any { it.severity == Severity.CRITICAL }) 
-                            "<li><strong>URGENT:</strong> Address critical red flags before deployment</li>" else ""}
+                            "<li><strong>Важно:</strong> устраните критические красные флаги до вывода в прод</li>" else ""}
                         ${if (qaVerification.redFlags.any { it.type == RedFlagType.HARDCODED_ANSWERS }) 
-                            "<li>Review optimized prompts for hardcoded answers</li>" else ""}
+                            "<li>Проверьте оптимизированные промпты на признаки «зашитых» ответов</li>" else ""}
                         ${if (qaVerification.redFlags.any { it.type == RedFlagType.OVERFITTING }) 
-                            "<li>Test with additional unseen domains and patterns</li>" else ""}
-                        <li>Consider manual review of optimization algorithm</li>
-                        <li>Implement additional validation checks</li>
+                            "<li>Протестируйте на дополнительных доменах и паттернах (снижение переобучения)</li>" else ""}
+                        <li>Проведите ручной разбор результатов работы алгоритма оптимизации</li>
+                        <li>Включите дополнительные проверки качества и регрессии</li>
                     </ul>
                 </div>
                 """ else """
                 <div class="next-steps success">
-                    <h3>✅ Optimization Approved</h3>
-                    <p>The optimization appears legitimate and can be safely deployed.</p>
+                    <h3>✅ Оптимизация одобрена</h3>
+                    <p>Результат выглядит обоснованным; при наличии согласования процессов можно рассматривать использование оптимизированной версии.</p>
                 </div>
                 """}
             </div>
@@ -563,25 +564,233 @@ class QAVerificationHtmlReportGenerator : ReportGenerator {
         """
     }
     
-    private fun buildStandardHtmlReport(result: TestSuiteResult): String {
+    private fun buildStandardHtmlReport(result: TestSuiteResult, testSuiteName: String?): String {
+        val effectiveSuiteName = testSuiteName ?: "Набор тестов"
+        val successRatePercent = formatPercent(result.successRate)
+        val averageScorePercent = formatPercent(result.metrics.averageScore)
+        val qaSummary = result.qaSummary
+
         return """
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Test Suite Report</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Отчёт QA-верификации</title>
     <style>${getEnhancedStyles()}</style>
 </head>
 <body>
     <div class="container">
-        <h1>Test Suite Report</h1>
-        <p>Results: ${result.results.size} tests</p>
-        <p>Passed: ${result.results.count { it.evaluationResult.passed }}</p>
-        <p>Execution Time: ${result.executionTimeMs}ms</p>
+        <header class="header">
+            <h1>Отчёт QA-верификации</h1>
+            <div class="subtitle">${escapeHtml(effectiveSuiteName)}</div>
+            <div class="timestamp">Сформирован: ${LocalDateTime.now()}</div>
+        </header>
+
+        <section class="section">
+            <h2>Сводка</h2>
+            <div class="summary-grid">
+                <div class="summary-card info">
+                    <div class="card-title">Тестов всего</div>
+                    <div class="card-value">${result.total}</div>
+                </div>
+                <div class="summary-card success">
+                    <div class="card-title">Успешно</div>
+                    <div class="card-value">${result.passed}</div>
+                </div>
+                <div class="summary-card danger">
+                    <div class="card-title">Провалено</div>
+                    <div class="card-value">${result.failed}</div>
+                </div>
+                <div class="summary-card ${if (result.successRate >= 0.7) "success" else "warning"}">
+                    <div class="card-title">Доля успеха</div>
+                    <div class="card-value">$successRatePercent</div>
+                </div>
+                <div class="summary-card ${if (result.metrics.averageScore >= 0.7) "success" else "warning"}">
+                    <div class="card-title">Средняя оценка</div>
+                    <div class="card-value">$averageScorePercent</div>
+                </div>
+                <div class="summary-card info">
+                    <div class="card-title">Время выполнения</div>
+                    <div class="card-value">${result.executionTimeMs} ms</div>
+                </div>
+            </div>
+        </section>
+
+        ${if (qaSummary != null) """
+        <section class="section qa-summary-section">
+            <h2>Проверка качества (QA)</h2>
+            <div class="summary-grid">
+                <div class="summary-card ${qaVerdictClass(qaSummary.finalVerdict)}">
+                    <div class="card-title">Итоговый вердикт</div>
+                    <div class="card-value">${ruQAVerdict(qaSummary.finalVerdict)}</div>
+                </div>
+                <div class="summary-card ${if (qaSummary.generalizationScore >= 0.7) "success" else "warning"}">
+                    <div class="card-title">Обобщение</div>
+                    <div class="card-value">${formatPercent(qaSummary.generalizationScore)}</div>
+                </div>
+                <div class="summary-card ${if (qaSummary.consistencyScore >= 0.7) "success" else "warning"}">
+                    <div class="card-title">Согласованность</div>
+                    <div class="card-value">${formatPercent(qaSummary.consistencyScore)}</div>
+                </div>
+                <div class="summary-card ${if (qaSummary.suspiciousTestsCount > 0) "warning" else "success"}">
+                    <div class="card-title">Подозрительные тесты</div>
+                    <div class="card-value">${qaSummary.suspiciousTestsCount}</div>
+                </div>
+            </div>
+            ${if (qaSummary.redFlags.isNotEmpty()) """
+            <div class="inline-note warning">
+                <strong>Сигналы (red flags):</strong> ${escapeHtml(qaSummary.redFlags.joinToString("; "))}
+            </div>
+            """ else ""}
+        </section>
+        """ else ""}
+
+        <section class="section">
+            <h2>Результаты тестов</h2>
+            <div class="table-wrapper">
+                <table class="results-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Промпт</th>
+                            <th>Агент</th>
+                            <th>Провайдер</th>
+                            <th>Метод оценки</th>
+                            <th>Балл</th>
+                            <th>Статус</th>
+                            <th>Время ответа</th>
+                            <th>Ошибка</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${result.results.mapIndexed { index, testResult ->
+                            val statusClass = if (testResult.success) "success" else "danger"
+                            val scorePercent = formatPercent(testResult.evaluationResult.score)
+                            val agents = testResult.testCase.getAllAgentNames().joinToString(", ")
+                            val errorText = testResult.error?.takeIf { it.isNotBlank() } ?: "-"
+                            val model = testResult.llmResponse?.model ?: "-"
+                            """
+                            <tr class="$statusClass">
+                                <td>${index + 1}</td>
+                                <td>${escapeHtml(testResult.testCase.promptId)}</td>
+                                <td>${escapeHtml(agents)}</td>
+                                <td>${escapeHtml(testResult.provider ?: "-")}</td>
+                                <td>${escapeHtml(testResult.testCase.evaluatorType)}</td>
+                                <td><strong>$scorePercent</strong></td>
+                                <td><span class="status-badge $statusClass">${if (testResult.success) "УСПЕХ" else "ПРОВАЛ"}</span></td>
+                                <td>${testResult.executionTimeMs} ms</td>
+                                <td class="error-cell">${escapeHtml(errorText)}</td>
+                            </tr>
+                            <tr class="details-row">
+                                <td colspan="9">
+                                    <details>
+                                        <summary>Подробнее</summary>
+                                        <div class="details-grid">
+                                            <div><strong>Ожидалось:</strong> ${escapeHtml(testResult.testCase.expected)}</div>
+                                            <div><strong>Ответ модели:</strong> ${escapeHtml(testResult.llmResponse?.content ?: "-")}</div>
+                                            <div><strong>Пояснение оценки:</strong> ${escapeHtml(testResult.evaluationResult.explanation)}</div>
+                                            <div><strong>Модель:</strong> ${escapeHtml(model)}</div>
+                                            <div><strong>Переменные:</strong> ${escapeHtml(testResult.testCase.variables.toString())}</div>
+                                        </div>
+                                    </details>
+                                </td>
+                            </tr>
+                            """
+                        }.joinToString("")}
+                    </tbody>
+                </table>
+            </div>
+        </section>
     </div>
 </body>
 </html>
         """
+    }
+
+    private fun qaVerdictClass(verdict: QAVerdict): String = when (verdict) {
+        QAVerdict.LEGITIMATE -> "success"
+        QAVerdict.SUSPICIOUS -> "warning"
+        QAVerdict.FAILED -> "danger"
+    }
+
+    private fun formatPercent(value: Double): String = "${String.format("%.1f", value * 100)}%"
+
+    private fun ruVerificationStatus(status: VerificationStatus): String = when (status) {
+        VerificationStatus.LEGITIMATE -> "Надёжный результат"
+        VerificationStatus.SUSPICIOUS -> "Есть признаки риска"
+        VerificationStatus.FAILED -> "Не пройдено"
+        VerificationStatus.INCONCLUSIVE -> "Неопределённо"
+    }
+
+    private fun ruSeverity(severity: Severity): String = when (severity) {
+        Severity.CRITICAL -> "Критично"
+        Severity.HIGH -> "Высокая"
+        Severity.MEDIUM -> "Средняя"
+        Severity.LOW -> "Низкая"
+    }
+
+    private fun ruCategoryStatus(status: CategoryStatus): String = when (status) {
+        CategoryStatus.GOOD -> "Хорошо"
+        CategoryStatus.WARNING -> "Внимание"
+        CategoryStatus.CRITICAL -> "Критично"
+    }
+
+    private fun ruQAVerdict(verdict: QAVerdict): String = when (verdict) {
+        QAVerdict.LEGITIMATE -> "Надёжно"
+        QAVerdict.SUSPICIOUS -> "Подозрительно"
+        QAVerdict.FAILED -> "Провалено"
+    }
+
+    private fun ruRedFlagType(type: RedFlagType): String = when (type) {
+        RedFlagType.HARDCODED_ANSWERS -> "Жёстко заданные ответы"
+        RedFlagType.OVERFITTING -> "Переобучение под тестовый набор"
+        RedFlagType.SUSPICIOUS_PATTERNS -> "Подозрительные паттерны"
+        RedFlagType.PERFORMANCE_ANOMALY -> "Аномалии метрик качества"
+        RedFlagType.PROMPT_LEAKAGE -> "Утечка инструкций промпта"
+        RedFlagType.INCONSISTENT_OPTIMIZATION -> "Непоследовательная оптимизация"
+    }
+
+    private fun ruTestCategory(category: String): String = when (category.uppercase(Locale.ROOT)) {
+        "BASELINE" -> "Базовые"
+        "PARAPHRASE" -> "Перефразирование"
+        "TRAP" -> "Ловушки"
+        "UNSEEN" -> "Новые домены"
+        "MISLEADING" -> "Обманчивая формулировка"
+        "EDGE_CASE" -> "Граничные случаи"
+        else -> category.lowercase(Locale.ROOT).replaceFirstChar { ch ->
+            if (ch.isLowerCase()) ch.titlecase(Locale.getDefault()) else ch.toString()
+        }
+    }
+
+    private fun ruOptimizationMode(mode: OptimizationMode): String = when (mode) {
+        OptimizationMode.SUGGEST -> "Только предложения"
+        OptimizationMode.APPLY -> "Применение изменений"
+    }
+
+    private fun ruOptimizerType(type: OptimizerType): String = when (type) {
+        OptimizerType.LLM -> "LLM-оптимизатор"
+        OptimizerType.RULE_BASED -> "Правила"
+    }
+
+    private fun ruSuggestionType(type: SuggestionType): String = when (type) {
+        SuggestionType.CLARITY -> "Ясность"
+        SuggestionType.SPECIFICITY -> "Конкретизация"
+        SuggestionType.LENGTH -> "Объём"
+        SuggestionType.STRUCTURE -> "Структура"
+        SuggestionType.CONTEXT -> "Контекст"
+        SuggestionType.EXAMPLES -> "Примеры"
+        SuggestionType.CONSTRAINTS -> "Ограничения"
+        SuggestionType.FORMAT -> "Формат"
+        SuggestionType.TONE -> "Тон"
+        SuggestionType.OTHER -> "Прочее"
+    }
+
+    private fun ruSuggestionImpact(impact: SuggestionImpact): String = when (impact) {
+        SuggestionImpact.LOW -> "Низкое влияние"
+        SuggestionImpact.MEDIUM -> "Среднее влияние"
+        SuggestionImpact.HIGH -> "Высокое влияние"
+        SuggestionImpact.CRITICAL -> "Критичное влияние"
     }
     
     private fun getStatusIcon(status: VerificationStatus): String = when (status) {
@@ -605,10 +814,13 @@ class QAVerificationHtmlReportGenerator : ReportGenerator {
     }
     
     private fun getStatusDescription(status: VerificationStatus): String = when (status) {
-        VerificationStatus.LEGITIMATE -> "The optimization appears to be genuine and can be trusted."
-        VerificationStatus.SUSPICIOUS -> "Some concerning patterns detected. Manual review recommended."
-        VerificationStatus.FAILED -> "Critical issues detected. Do not deploy this optimization."
-        VerificationStatus.INCONCLUSIVE -> "Unable to determine legitimacy. Additional testing needed."
+        VerificationStatus.LEGITIMATE -> "Изменение выглядит содержательным и устойчивым при текущих проверках."
+        VerificationStatus.SUSPICIOUS ->
+            "Обнаружены отдельные сигналы риска. Рекомендуется ручной разбор и дополнительные тесты."
+        VerificationStatus.FAILED ->
+            "Критические проблемы: такую оптимизацию использовать нельзя до устранения причин."
+        VerificationStatus.INCONCLUSIVE ->
+            "Недостаточно данных для вывода. Нужно расширить набор проверочных кейсов или повторить прогон."
     }
     
     private fun getAccuracyClass(accuracy: Double): String = when {
@@ -1024,6 +1236,110 @@ class QAVerificationHtmlReportGenerator : ReportGenerator {
             .section { padding: 20px; }
             .summary-grid { grid-template-columns: 1fr; }
             .metrics-comparison { grid-template-columns: 1fr; }
+        }
+
+        .qa-summary-section {
+            background: #f6fbff;
+        }
+
+        .inline-note {
+            margin-top: 20px;
+            padding: 12px 16px;
+            border-radius: 8px;
+            border-left: 4px solid #dee2e6;
+        }
+
+        .inline-note.warning {
+            background: #fff8e1;
+            border-left-color: #ffc107;
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+        }
+
+        .results-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .results-table th, .results-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #edf0f2;
+            vertical-align: top;
+            text-align: left;
+            font-size: 0.92em;
+        }
+
+        .results-table thead th {
+            background: #f3f5f7;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .results-table tr.success td {
+            background: #f8fff9;
+        }
+
+        .results-table tr.danger td {
+            background: #fff8f8;
+        }
+
+        .status-badge {
+            display: inline-block;
+            font-size: 0.75em;
+            font-weight: 700;
+            padding: 4px 8px;
+            border-radius: 12px;
+            letter-spacing: 0.3px;
+        }
+
+        .status-badge.success {
+            color: #116329;
+            background: #d8f5df;
+        }
+
+        .status-badge.danger {
+            color: #7a1720;
+            background: #ffdfe2;
+        }
+
+        .error-cell {
+            max-width: 280px;
+            word-break: break-word;
+        }
+
+        .details-row td {
+            background: #fcfdff;
+            border-bottom: 1px solid #edf0f2;
+        }
+
+        .details-row details {
+            margin: 0;
+        }
+
+        .details-row summary {
+            cursor: pointer;
+            font-weight: 600;
+            color: #3b4b5a;
+            margin-bottom: 8px;
+        }
+
+        .details-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 8px;
+            background: #f8fafc;
+            border: 1px solid #e7ebef;
+            border-radius: 8px;
+            padding: 12px;
+            white-space: pre-wrap;
+            word-break: break-word;
         }
         """
     }

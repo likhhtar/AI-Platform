@@ -1,0 +1,105 @@
+metadata:
+  name: "AI Platform - Demo for VKR defense"
+  description: "Demonstration suite for prompt testing with real LLM provider"
+  version: "1.0"
+
+suite:
+  name: "VKR Presentation Demo"
+  version: "1.0"
+  description: "Short, clear scenarios for live demo during thesis presentation"
+  author: "likhhtar"
+  tags:
+    - "vkr"
+    - "demo"
+    - "real-llm"
+  executionMode: "REAL"
+
+execution:
+  enableParallelExecution: false
+  maxParallelism: 1
+  testTimeout: "45s"
+
+prompts:
+  - id: "intro-one-liner"
+    name: "One-line project intro"
+    template: "Сформулируй в 1 предложении идею ВКР на тему '{{topic}}'."
+
+  - id: "risks-list"
+    name: "Project risks in bullets"
+    template: "Для проекта '{{project_name}}' перечисли 3 риска и 3 меры снижения. Формат: Риск -> Мера."
+
+  - id: "defense-slide"
+    name: "Defense slide text"
+    template: "Сделай мини-слайд для защиты ВКР по теме '{{topic}}': Цель, Новизна, Результат."
+
+  - id: "quality-rationale-brief"
+    name: "Short rationale for platform value (LLM judge demo)"
+    template: >-
+      Ответь на русском в 2–3 предложениях: зачем в индустрии нужна тема ВКР
+      '{{topic}}' и какие главные проблемы она должна решать?
+
+agents:
+  - name: "openrouter-brief"
+    provider: "openrouter"
+    model: "openai/gpt-3.5-turbo"
+    temperature: 0.3
+    maxTokens: 220
+    systemPrompt: "Ты технический ассистент. Пиши коротко и по делу."
+
+  - name: "openrouter-formal"
+    provider: "openrouter"
+    model: "openai/gpt-3.5-turbo"
+    temperature: 0.5
+    maxTokens: 260
+    systemPrompt: "Ты научный консультант. Пиши формально, но понятно."
+
+tests:
+  - promptId: "intro-one-liner"
+    agent: "openrouter-brief"
+    variables:
+      topic: "автоматизация тестирования промптов LLM"
+    expected: "ВКР"
+    evaluator: "contains"
+    metadata:
+      demoStep: "1"
+      purpose: "Quick sanity check"
+
+  - promptId: "risks-list"
+    agent: "openrouter-formal"
+    variables:
+      project_name: "AI Platform"
+    expected: "Риск"
+    evaluator: "contains"
+    metadata:
+      demoStep: "2"
+      purpose: "Structured content generation"
+
+  - promptId: "defense-slide"
+    agent: "openrouter-formal"
+    variables:
+      topic: "платформа для экспериментов и регрессии LLM-промптов"
+    expected: "Цель"
+    evaluator: "contains"
+    metadata:
+      demoStep: "3"
+      purpose: "Presentation-ready output"
+
+  - promptId: "quality-rationale-brief"
+    agent: "openrouter-brief"
+    variables:
+      topic: "платформа для экспериментов и регрессионного контроля LLM-промптов"
+    expected: >-
+      Ответ должен упомянуть хотя бы два пункта из списка: риски галлюцинаций и
+      нестабильности ответов; регрессии качества при изменении промпта или модели;
+      необходимость автоматической проверки, метрик и регрессионных тестов для промптов.
+    evaluator: "llm-judge"
+    metadata:
+      demoStep: "4"
+      purpose: "LLM-as-judge (семантическая оценка ответа по критериям)"
+      judgeProvider: "openrouter"
+      judgeModel: "openai/gpt-3.5-turbo"
+
+regression:
+  baselineMode: "ASSERT"
+  baselineStrategy: "LATEST"
+  failOnRegression: false
