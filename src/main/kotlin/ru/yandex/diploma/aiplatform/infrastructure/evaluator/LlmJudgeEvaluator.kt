@@ -131,7 +131,7 @@ class LlmJudgeEvaluator(
         val explanation = explanationLine?.substringAfter(":", "")?.trim()
             ?: lines.drop(1).joinToString(" ").ifBlank { "No explanation provided" }
         
-        val passed = score >= 0.5
+        val passed = score > 0.5
         
         logger.debug("LLM judge evaluation: score=$score, passed=$passed")
         
