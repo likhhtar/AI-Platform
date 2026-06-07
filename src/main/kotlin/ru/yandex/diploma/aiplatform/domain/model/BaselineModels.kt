@@ -40,10 +40,20 @@ data class BaselineConfiguration(
     val isActive: Boolean = true
 )
 
+data class OptimizationRunSummary(
+    val iterationRounds: Int,
+    val mode: String,
+    val optimizerType: String,
+    val executionTimeMs: Long,
+    val optimizationStatus: String,
+)
+
 data class EnhancedTestSuiteResult(
     val runId: String,
     val testRun: TestRunRecord,
     val regressionAnalysis: SuiteRegressionAnalysis,
     val reportFile: java.io.File?,
+    val optimizationReportFile: java.io.File? = null,
+    val optimizationSummary: OptimizationRunSummary? = null,
     val exitCode: Int
 )

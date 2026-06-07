@@ -2,6 +2,7 @@ package ru.yandex.diploma.aiplatform.infrastructure.evaluator
 
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -24,7 +25,9 @@ class LlmJudgeEvaluatorTest {
         )
 
         val ex = assertThrows<JudgeEvaluationFailedException> {
-            evaluator.evaluate("actual", "expected", emptyMap())
+            runBlocking {
+                evaluator.evaluate("actual", "expected", emptyMap())
+            }
         }
         assertTrue(ex.message.orEmpty().contains("FAIL_FAST", ignoreCase = true))
     }
@@ -39,7 +42,9 @@ class LlmJudgeEvaluatorTest {
             JudgeEvaluationProperties(fallbackPolicy = JudgeFallbackPolicy.HEURISTIC)
         )
 
-        val result = evaluator.evaluate("contains expected text", "expected", emptyMap())
+        val result = runBlocking {
+            evaluator.evaluate("contains expected text", "expected", emptyMap())
+        }
         assertTrue(result.passed)
         assertEquals(0.7, result.score, 0.0001)
     }

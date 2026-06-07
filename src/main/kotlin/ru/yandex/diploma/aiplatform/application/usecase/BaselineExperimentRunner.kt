@@ -9,23 +9,26 @@ import ru.yandex.diploma.aiplatform.domain.repository.TestConfiguration
 import ru.yandex.diploma.aiplatform.domain.repository.TestConfigurationRepository
 import ru.yandex.diploma.aiplatform.domain.service.ProviderValidationService
 import ru.yandex.diploma.aiplatform.domain.service.RegressionDetectionService
+import ru.yandex.diploma.aiplatform.infrastructure.service.OptimizationHtmlReportGenerator
 import java.time.Instant
 import java.util.UUID
 
 @Service
 class BaselineExperimentRunner(
     private val runTestSuiteUseCase: RunTestSuiteUseCase,
+    private val optimizationExperimentRunner: OptimizationExperimentRunner,
     private val configurationRepository: TestConfigurationRepository,
     private val baselineRepository: BaselineRepository,
     private val regressionDetectionService: RegressionDetectionService,
-    private val providerValidationService: ProviderValidationService
+    private val providerValidationService: ProviderValidationService,
+    private val optimizationHtmlReportGenerator: OptimizationHtmlReportGenerator,
 ) {
 
     private val logger = LoggerFactory.getLogger(BaselineExperimentRunner::class.java)
 
     suspend fun executeWithBaseline(
         configurationSource: String,
-        executionConfig: ExecutionConfig = ExecutionConfig(),
+        executionConfig: ExecutionConfig? = null,
         regressionConfig: RegressionConfiguration? = null,
         baselineModeOverride: BaselinePersistenceMode? = null,
     ): EnhancedTestSuiteResult {
@@ -46,7 +49,56 @@ class BaselineExperimentRunner(
 
         val suiteId = BaselineKeys.suiteId(configurationSource, configuration.suiteMetadata)
 
-        val originalResult = runTestSuiteUseCase.execute(configurationSource, executionConfig)
+        val resolvedExecutionConfig = executionConfig ?: configuration.executionConfig
+        logger.info(
+            "Running suite with execution: parallel={}, maxParallelism={}, testTimeout={}",
+            resolvedExecutionConfig.enableParallelExecution,
+            resolvedExecutionConfig.maxParallelism,
+            resolvedExecutionConfig.testTimeout,
+        )
+
+        val optimizationConfig = configuration.optimizationConfig
+        val suiteExecStarted = System.currentTimeMillis()
+        val (optimizationOutcome, originalResult) =
+            if (optimizationConfig?.enabled == true) {
+                val primaryAgent =
+                    configuration.agents.firstOrNull()
+                        ?: throw TestSuiteException(
+                            "Оптимизация включена (optimizer.enabled), но в конфигурации нет ни одного агента",
+                        )
+                logger.info(
+                    "Optimization enabled: type={}, iterations={}, mode={}",
+                    optimizationConfig.type,
+                    optimizationConfig.iterations,
+                    optimizationConfig.mode,
+                )
+                val agentForPipeline = AgentConfig.from(primaryAgent, resolvedExecutionConfig)
+                val outcome =
+                    optimizationExperimentRunner.runExperimentWithOptimization(
+                        configurationSource = configurationSource,
+                        agentConfig = agentForPipeline,
+                        optimizationConfig = optimizationConfig,
+                    )
+                outcome to suiteResultFromOptimizationOutcome(outcome)
+            } else {
+                null to runTestSuiteUseCase.execute(configurationSource, resolvedExecutionConfig)
+            }
+
+        val suiteExecMs = System.currentTimeMillis() - suiteExecStarted
+        if (optimizationOutcome != null) {
+            logger.info(
+                "baseline_runner optimization_pipeline_done wallClockMs={} optimizationReportedMs={} iterationRounds={}",
+                suiteExecMs,
+                optimizationOutcome.executionTimeMs,
+                optimizationOutcome.iterationSummaries.size,
+            )
+        } else {
+            logger.info(
+                "baseline_runner suite_only_done wallClockMs={} suiteReportedMs={}",
+                suiteExecMs,
+                originalResult.executionTimeMs,
+            )
+        }
 
         val testRunRecord = convertToTestRunRecord(
             originalResult = originalResult,
@@ -92,11 +144,33 @@ class BaselineExperimentRunner(
             suiteId = suiteId
         )
 
+        val optimizationReportFile =
+            optimizationOutcome?.let { outcome ->
+                try {
+                    optimizationHtmlReportGenerator.generateOptimizationReport(outcome)
+                } catch (e: Exception) {
+                    logger.warn("Failed to write optimization HTML report: {}", e.message)
+                    null
+                }
+            }
+        val optimizationSummary =
+            optimizationOutcome?.let { o ->
+                OptimizationRunSummary(
+                    iterationRounds = o.iterationSummaries.size,
+                    mode = o.config.mode.name,
+                    optimizerType = o.config.type.name,
+                    executionTimeMs = o.executionTimeMs,
+                    optimizationStatus = o.optimizationResult.status.name,
+                )
+            }
+
         return EnhancedTestSuiteResult(
             runId = testRunRecord.runId,
             testRun = testRunRecord,
             regressionAnalysis = regressionAnalysis,
             reportFile = originalResult.reportFile,
+            optimizationReportFile = optimizationReportFile,
+            optimizationSummary = optimizationSummary,
             exitCode = determineExitCode(regressionAnalysis, resolvedRegressionConfig)
         )
     }
@@ -182,15 +256,14 @@ class BaselineExperimentRunner(
             else -> 0
         }
     }
-}
 
-private fun TestResult.toBaselineEntry(): BaselineEntry {
-    val m = LinkedHashMap<String, Double>()
-    m["correctness"] = evaluationResult.score
-    metrics.forEach { (k, v) -> m[k] = v.score }
-    return BaselineEntry(
-        response = llmResponse?.content ?: "",
-        metrics = m,
-        createdAt = Instant.now()
-    )
+    private fun suiteResultFromOptimizationOutcome(outcome: OptimizationExperimentResult): TestSuiteResult {
+        val fromOptimized =
+            outcome.optimizedExperimentResult?.runs?.firstOrNull { it.result != null }?.result
+        val fromBaseline = outcome.baselineResult.runs.firstOrNull { it.result != null }?.result
+        return fromOptimized ?: fromBaseline
+            ?: throw TestSuiteException(
+                "Эксперимент оптимизации завершился без результата тестового набора",
+            )
+    }
 }

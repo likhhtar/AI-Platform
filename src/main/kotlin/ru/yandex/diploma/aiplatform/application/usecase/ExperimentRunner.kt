@@ -47,7 +47,14 @@ class ExperimentRunner(
             
             val metrics = calculateMetrics(listOf(experimentRun))
             
-            logger.info("Experiment successfully completed in ${executionTimeMs}ms")
+            logger.info(
+                "experiment_done wallClockMs={} suiteReportedMs={} tests={} passed={} failed={}",
+                executionTimeMs,
+                result.executionTimeMs,
+                result.total,
+                result.passed,
+                result.failed,
+            )
             
             ExperimentResult(
                 agentConfig = agentConfig,

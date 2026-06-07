@@ -117,6 +117,7 @@ class DefaultProviderRegistry(
         val realProviderClasses = setOf(
             "OpenRouterLlmProvider",
             "OpenAiLlmProvider",
+            "YandexElizaLlmProvider",
             "DeterministicLlmProvider",
             "ValidLlmProvider"
         )

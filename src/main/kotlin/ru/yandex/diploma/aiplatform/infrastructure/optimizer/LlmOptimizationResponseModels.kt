@@ -72,4 +72,18 @@ internal object OptimizationJsonExtractions {
         }
         return firstBalancedJsonObject(raw.trim())
     }
+
+    fun balancedJsonObjectsFrom(raw: CharSequence): List<String> {
+        val seen = LinkedHashSet<String>()
+        val out = mutableListOf<String>()
+        for (i in raw.indices) {
+            if (raw[i] != '{') continue
+            firstBalancedJsonObject(raw.subSequence(i, raw.length))?.let {
+                if (seen.add(it)) {
+                    out.add(it)
+                }
+            }
+        }
+        return out
+    }
 }

@@ -22,7 +22,7 @@ aiplatform:
 llm:
   providers:
     deterministic:
-      enabled: false
+      enabled: true
 
     openai:
       enabled: false
@@ -42,6 +42,15 @@ llm:
       base-url: https://openrouter.ai/api/v1
       default-model: deepseek/deepseek-chat
       timeout: 30s
+      max-retries: 3
+      retry-delay: 1s
+
+    yandex-eliza:
+      enabled: false
+      oauth-token: ${SOY_TOKEN:}
+      base-url: https://api.eliza.yandex.net
+      default-model: gpt-4.1
+      timeout: 60s
       max-retries: 3
       retry-delay: 1s
 

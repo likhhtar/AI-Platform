@@ -6,9 +6,11 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.stereotype.Component
+import org.springframework.http.client.reactive.ReactorClientHttpConnector
 import org.springframework.web.reactive.function.client.WebClient
 import org.springframework.web.reactive.function.client.WebClientResponseException
 import org.springframework.web.reactive.function.client.awaitBody
+import reactor.netty.http.client.HttpClient as ReactorHttpClient
 import ru.yandex.diploma.aiplatform.config.OpenAiError
 import ru.yandex.diploma.aiplatform.config.OpenAiMessage
 import ru.yandex.diploma.aiplatform.config.OpenAiRequest
@@ -31,12 +33,18 @@ class OpenRouterLlmProvider(
     private val defaultModel: String get() = config.defaultModel
     private val maxRetries: Int get() = config.maxRetries
     private val retryDelay: Duration get() = config.retryDelay
+    private val httpTimeout: Duration get() = config.timeout
 
     private val logger = LoggerFactory.getLogger(OpenRouterLlmProvider::class.java)
     override val providerId: String = "openrouter"
 
     private val httpClient: WebClient by lazy {
+        val connector =
+            ReactorClientHttpConnector(
+                ReactorHttpClient.create().responseTimeout(httpTimeout),
+            )
         WebClient.builder()
+            .clientConnector(connector)
             .baseUrl(baseUrl)
             .defaultHeader("Authorization", "Bearer $apiKey")
             .defaultHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE)
@@ -47,7 +55,28 @@ class OpenRouterLlmProvider(
     override suspend fun generate(request: LlmRequest): LlmResponse {
         validateConfiguration()
         val openAiRequest = mapToOpenAiRequest(request)
-        return executeWithRetry { performHttpCall(openAiRequest) }
+        val wallStart = System.currentTimeMillis()
+        val model = openAiRequest.model
+        return try {
+            executeWithRetry { performHttpCall(openAiRequest) }.also {
+                logger.info(
+                    "llm_openrouter_done model={} durationMs={} promptChars={} responseChars={}",
+                    model,
+                    System.currentTimeMillis() - wallStart,
+                    request.prompt.length,
+                    it.content.length,
+                )
+            }
+        } catch (e: Exception) {
+            logger.warn(
+                "llm_openrouter_failed model={} durationMs={} promptChars={}",
+                model,
+                System.currentTimeMillis() - wallStart,
+                request.prompt.length,
+                e,
+            )
+            throw e
+        }
     }
 
     override suspend fun isHealthy(): Boolean {
@@ -79,7 +108,7 @@ class OpenRouterLlmProvider(
                 .bodyValue(request)
                 .retrieve()
                 .awaitBody<OpenAiResponse>()
-            logger.debug("OpenRouter response: tokens=${response.usage.totalTokens}")
+            logger.debug("OpenRouter response: tokens=${response.usage?.totalTokens ?: 0}")
             return mapToLlmResponse(response)
         } catch (e: WebClientResponseException) {
             logger.error("OpenRouter HTTP error: ${e.statusCode} - ${e.responseBodyAsString}")
@@ -117,19 +146,23 @@ class OpenRouterLlmProvider(
                 message = "OpenRouter response contains no choices",
                 providerId = providerId
             )
+        val usage = response.usage
+        val metadata = buildMap<String, Any> {
+            put("provider", providerId)
+            response.id?.let { put("openrouter_id", it) }
+            response.created?.let { put("created", it) }
+            usage?.let {
+                put("prompt_tokens", it.promptTokens)
+                put("completion_tokens", it.completionTokens)
+                put("total_tokens", it.totalTokens)
+            }
+        }
         return LlmResponse(
             content = choice.message.content,
-            tokensUsed = response.usage.totalTokens,
+            tokensUsed = usage?.totalTokens,
             model = response.model,
             finishReason = choice.finishReason,
-            metadata = mapOf(
-                "provider" to providerId,
-                "openrouter_id" to response.id,
-                "created" to response.created,
-                "prompt_tokens" to response.usage.promptTokens,
-                "completion_tokens" to response.usage.completionTokens,
-                "total_tokens" to response.usage.totalTokens
-            )
+            metadata = metadata
         )
     }
 
@@ -202,7 +235,8 @@ class OpenRouterLlmProvider(
         val message = e.message?.lowercase() ?: ""
         return message.contains("authentication") ||
             message.contains("bad request") ||
-            message.contains("unauthorized")
+            message.contains("unauthorized") ||
+            message.contains("rate limit")
     }
 
     private fun calculateBackoffDelay(attempt: Int): Long =

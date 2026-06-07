@@ -1,0 +1,59 @@
+suite:
+  id: "prompt-breeder-e2e"
+  name: "PromptBreeder E2E Test"
+
+execution:
+  enableParallelExecution: false
+
+regression:
+  baselineMode: RECORD
+
+agents:
+  - name: "test-agent"
+    provider: "openrouter"
+    model: "openai/gpt-4o-mini"
+    systemPrompt: "You are a helpful assistant."
+    temperature: 0.0
+    maxTokens: 500
+
+prompts:
+  - id: "test-prompt"
+    name: "Test Prompt"
+    template: "Answer the question briefly: {{question}}"
+
+test_cases:
+  - id: "tc1"
+    promptId: "test-prompt"
+    agent: "test-agent"
+    variables:
+      question: "What is 2+2?"
+    expected: "4"
+    evaluator: "contains"
+  - id: "tc2"
+    promptId: "test-prompt"
+    agent: "test-agent"
+    variables:
+      question: "What is the capital of France?"
+    expected: "Paris"
+    evaluator: "contains"
+  - id: "tc3"
+    promptId: "test-prompt"
+    agent: "test-agent"
+    variables:
+      question: "What is the color of the sky?"
+    expected: "blue"
+    evaluator: "contains"
+
+optimizer:
+  enabled: true
+  type: llm
+  mode: APPLY
+  iterations: 6
+  evolve_mutation_prompt: true
+  mutation_evolve_every_n_iterations: 3
+  mutation_prompt: "Rewrite this instruction to be clearer and more specific"
+  plateau_score_epsilon: 0
+  llm:
+    provider: "openrouter"
+    model: "openai/gpt-4o-mini"
+    maxTokens: 500

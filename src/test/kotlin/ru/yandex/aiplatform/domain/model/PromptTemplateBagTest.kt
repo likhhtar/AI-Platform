@@ -4,6 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import ru.yandex.diploma.aiplatform.domain.model.extractTemplateVariableBag
+import ru.yandex.diploma.aiplatform.domain.model.missingTemplatePlaceholders
 import ru.yandex.diploma.aiplatform.domain.model.replaceRegexOutsidePlaceholderSpans
 import ru.yandex.diploma.aiplatform.domain.model.validateTemplatePlaceholderBagPreservation
 
@@ -21,6 +22,27 @@ class PromptTemplateBagTest {
         assertFailsWith<IllegalArgumentException> {
             validateTemplatePlaceholderBagPreservation("{{a}} {{a}}", "{{a}}")
         }
+    }
+
+    @Test
+    fun `missingTemplatePlaceholders empty for valid mutation`() {
+        val original = "Write ad for {{product}} in {{language}}."
+        val mutated = "You are a copywriter. Product: {{product}}. Language: {{language}}."
+        assertEquals(emptyList(), missingTemplatePlaceholders(original, mutated))
+    }
+
+    @Test
+    fun `missingTemplatePlaceholders lists dropped placeholder`() {
+        val original = "Write ad for {{product}} in {{language}}."
+        val mutated = "Write ad in {{language}}."
+        assertEquals(listOf("product"), missingTemplatePlaceholders(original, mutated))
+    }
+
+    @Test
+    fun `missingTemplatePlaceholders lists renamed placeholder`() {
+        val original = "Write ad for {{product}}."
+        val mutated = "Write ad for {{item}}."
+        assertEquals(listOf("product"), missingTemplatePlaceholders(original, mutated))
     }
 
     @Test

@@ -23,28 +23,28 @@ data class OpenAiMessage(
 )
 
 data class OpenAiResponse(
-    val id: String,
-    val `object`: String,
-    val created: Long,
-    val model: String,
-    val choices: List<OpenAiChoice>,
-    val usage: OpenAiUsage
+    val id: String? = null,
+    val `object`: String? = null,
+    val created: Long? = null,
+    val model: String? = null,
+    val choices: List<OpenAiChoice> = emptyList(),
+    val usage: OpenAiUsage? = null,
 )
 
 data class OpenAiChoice(
     val index: Int,
     val message: OpenAiMessage,
     @JsonProperty("finish_reason")
-    val finishReason: String
+    val finishReason: String? = null,
 )
 
 data class OpenAiUsage(
     @JsonProperty("prompt_tokens")
-    val promptTokens: Int,
+    val promptTokens: Int = 0,
     @JsonProperty("completion_tokens")
-    val completionTokens: Int,
+    val completionTokens: Int = 0,
     @JsonProperty("total_tokens")
-    val totalTokens: Int
+    val totalTokens: Int = 0,
 )
 
 data class OpenAiError(

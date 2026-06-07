@@ -3,6 +3,7 @@ package ru.yandex.diploma.aiplatform.`interface`.rest
 import com.fasterxml.jackson.annotation.JsonInclude
 import jakarta.validation.constraints.NotBlank
 import ru.yandex.diploma.aiplatform.domain.model.BaselinePersistenceMode
+import ru.yandex.diploma.aiplatform.domain.model.OptimizationRunSummary
 
 data class RunTestsRequest(
     @field:NotBlank(message = "Configuration cannot be blank")
@@ -20,6 +21,8 @@ data class RunTestsResponse(
     val executionTimeMs: Long,
     val results: List<TestResultDto>,
     val reportPath: String? = null,
+    val optimizationReportPath: String? = null,
+    val optimization: OptimizationRunSummary? = null,
     val runId: String? = null,
     val regressionStatus: String? = null,
     val regressionCount: Int? = null,

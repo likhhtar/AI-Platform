@@ -1,0 +1,70 @@
+# Оптимизация со всеми компонентами: lineage (RECORD), Lamarckian (llm-judge + объяснения),
+# эволюция mutation-prompt (evolve_mutation_prompt), zero-order fallback при повторе semantic fingerprint.
+#
+# Судья и оптимизатор — разные модели: judge через metadata теста; оптимизатор — optimizer.llm.
+# Вспомогательные вызовы (Lamarckian / mutation evolve / zero-order) используют LlmProvider приложения.
+
+suite:
+  id: "full-optimization-stack"
+  name: "Full optimization stack (lineage + Lamarckian + mutation evolve + zero-order path)"
+
+execution:
+  enableParallelExecution: false
+  # Один тест = агент + llm-judge; без верхней границы на HTTP запрос зависший OpenRouter мог «висеть» дольше корутинного withTimeout.
+  # Два последовательных теста → до ~2× testTimeout до ответа curl (плюс запись baseline).
+  testTimeout: 90s
+
+regression:
+  baselineMode: RECORD
+
+agents:
+  - name: "task-agent"
+    provider: "openrouter"
+    model: "openai/gpt-4o-mini"
+    systemPrompt: "You are a helpful assistant. Answer concisely."
+    temperature: 0.2
+    maxTokens: 1024
+
+prompts:
+  - id: "main-prompt"
+    name: "Main prompt"
+    template: |
+      Answer the user's question clearly.
+      Question: {{question}}
+
+test_cases:
+  - promptId: "main-prompt"
+    agent: "task-agent"
+    variables:
+      question: "What is the capital of France?"
+    expected: "The answer must say that Paris is the capital of France."
+    evaluator: "llm-judge"
+    metadata:
+      judgeProvider: "openrouter"
+      judgeModel: "openai/gpt-4o-mini"
+
+  - promptId: "main-prompt"
+    agent: "task-agent"
+    variables:
+      question: "Name three primary colors."
+    expected: "The answer should mention red, blue, and yellow (or another standard set of primaries)."
+    evaluator: "llm-judge"
+    metadata:
+      judgeProvider: "openrouter"
+      judgeModel: "openai/gpt-4o-mini"
+
+optimizer:
+  enabled: true
+  type: llm
+  mode: SUGGEST
+  iterations: 5
+  plateau_score_epsilon: 0
+  evolve_mutation_prompt: true
+  mutation_evolve_every_n_iterations: 2
+  mutation_prompt: "Rewrite this instruction to be clearer and more specific"
+  llm:
+    provider: "openrouter"
+    model: "openai/gpt-4o"
+    temperature: 0.25
+    maxTokens: 1000
+    systemPrompt: "You improve prompts; obey the JSON envelope requested by the optimizer."

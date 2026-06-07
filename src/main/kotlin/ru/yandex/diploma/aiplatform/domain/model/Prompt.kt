@@ -18,4 +18,7 @@ data class Prompt(
         val missingVariables = variables - variableValues.keys
         return missingVariables.toList()
     }
+
+    fun orphanVariableKeys(variableValues: Map<String, String>): Set<String> =
+        variableValues.keys - variables
 }

@@ -102,41 +102,55 @@ class RunTestSuiteUseCase(
         configuration: TestConfiguration,
         executionConfig: ExecutionConfig
     ): TestResult {
-        return try {
-            withTimeout(executionConfig.testTimeout) {
-                executeTestCase(testCase, configuration)
+        val wallStart = System.currentTimeMillis()
+        val result =
+            try {
+                withTimeout(executionConfig.testTimeout) {
+                    executeTestCase(testCase, configuration)
+                }
+            } catch (e: TimeoutCancellationException) {
+                logger.warn("Тест превысил таймаут ${executionConfig.testTimeout}: ${testCase.promptId}")
+                TestResult(
+                    testCase = testCase,
+                    success = false,
+                    evaluationResult = EvaluationResult(
+                        passed = false,
+                        score = 0.0,
+                        explanation = "Выполнение теста превысило таймаут ${executionConfig.testTimeout}"
+                    ),
+                    llmResponse = null,
+                    executionTimeMs = executionConfig.testTimeout.inWholeMilliseconds,
+                    error = "Таймаут после ${executionConfig.testTimeout}",
+                    infrastructureError = true
+                )
+            } catch (e: Exception) {
+                logger.error("Ошибка выполнения теста: ${testCase.promptId}", e)
+                TestResult(
+                    testCase = testCase,
+                    success = false,
+                    evaluationResult = EvaluationResult(
+                        passed = false,
+                        score = 0.0,
+                        explanation = "Ошибка выполнения теста: ${e.message}"
+                    ),
+                    llmResponse = null,
+                    executionTimeMs = 0,
+                    error = e.message,
+                    infrastructureError = true
+                )
             }
-        } catch (e: TimeoutCancellationException) {
-            logger.warn("Тест превысил таймаут ${executionConfig.testTimeout}: ${testCase.promptId}")
-            TestResult(
-                testCase = testCase,
-                success = false,
-                evaluationResult = EvaluationResult(
-                    passed = false,
-                    score = 0.0,
-                    explanation = "Выполнение теста превысило таймаут ${executionConfig.testTimeout}"
-                ),
-                llmResponse = null,
-                executionTimeMs = executionConfig.testTimeout.inWholeMilliseconds,
-                error = "Таймаут после ${executionConfig.testTimeout}",
-                infrastructureError = true
-            )
-        } catch (e: Exception) {
-            logger.error("Ошибка выполнения теста: ${testCase.promptId}", e)
-            TestResult(
-                testCase = testCase,
-                success = false,
-                evaluationResult = EvaluationResult(
-                    passed = false,
-                    score = 0.0,
-                    explanation = "Ошибка выполнения теста: ${e.message}"
-                ),
-                llmResponse = null,
-                executionTimeMs = 0,
-                error = e.message,
-                infrastructureError = true
-            )
-        }
+        val wallMs = System.currentTimeMillis() - wallStart
+        logger.info(
+            "test_case_finished promptId={} agents={} evaluator={} wallClockMs={} innerExecutionMs={} success={} infraError={}",
+            testCase.promptId,
+            testCase.getAllAgentNames().joinToString(","),
+            testCase.evaluatorType,
+            wallMs,
+            result.executionTimeMs,
+            result.success,
+            result.infrastructureError,
+        )
+        return result
     }
 
     private suspend fun executeTestCase(
@@ -166,6 +180,16 @@ class RunTestSuiteUseCase(
         val missingVariables = prompt.validateVariables(testCase.variables)
         if (missingVariables.isNotEmpty()) {
             throw TestSuiteException("Missing variables for prompt ${prompt.id}: ${missingVariables.joinToString(", ")}")
+        }
+
+        val orphanVariables = prompt.orphanVariableKeys(testCase.variables)
+        if (orphanVariables.isNotEmpty()) {
+            throw TestSuiteException(
+                "Test case supplies variables ${orphanVariables.joinToString(", ")} but prompt `${prompt.id}` " +
+                    "has no matching {{...}} placeholders (declared in template: " +
+                    "${prompt.variables.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: "none"}). " +
+                    "Those values are not injected — restore placeholders in the prompt template or remove the extras.",
+            )
         }
 
         val renderedPrompt = prompt.render(testCase.variables)
@@ -217,6 +241,16 @@ class RunTestSuiteUseCase(
         val missingVariables = prompt.validateVariables(testCase.variables)
         if (missingVariables.isNotEmpty()) {
             throw TestSuiteException("Missing variables for prompt ${prompt.id}: ${missingVariables.joinToString(", ")}")
+        }
+
+        val orphanVariables = prompt.orphanVariableKeys(testCase.variables)
+        if (orphanVariables.isNotEmpty()) {
+            throw TestSuiteException(
+                "Test case supplies variables ${orphanVariables.joinToString(", ")} but prompt `${prompt.id}` " +
+                    "has no matching {{...}} placeholders (declared in template: " +
+                    "${prompt.variables.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: "none"}). " +
+                    "Those values are not injected — restore placeholders in the prompt template or remove the extras.",
+            )
         }
 
         val renderedPrompt = prompt.render(testCase.variables)

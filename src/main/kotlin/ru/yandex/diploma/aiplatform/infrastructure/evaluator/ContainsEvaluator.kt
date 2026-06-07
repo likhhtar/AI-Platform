@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component
 class ContainsEvaluator : Evaluator {
     override val evaluatorType: String = "contains"
 
-    override fun evaluate(
+    override suspend fun evaluate(
         output: String,
         expected: String,
         metadata: Map<String, Any>
